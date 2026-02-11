@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="THE Ear Training Game">
+<meta name="theme-color" content="#0c0c14">
+<title>THE Ear Training Game</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♪</text></svg>">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%236366f1'/><text x='50' y='70' font-size='60' text-anchor='middle' fill='white'>♪</text></svg>">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    background: linear-gradient(160deg, #0c0c14 0%, #1a1a2e 40%, #16213e 100%);
+    color: #e0e0e0;
+    font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Menlo', monospace;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  html { height: -webkit-fill-available; }
+
+  .bg-grain {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    opacity: 0.03; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  }
+
+  .inner { max-width: 520px; margin: 0 auto; padding: 20px 16px 40px; position: relative; z-index: 1; }
+  .inner.has-notch { padding-top: env(safe-area-inset-top, 20px); padding-bottom: env(safe-area-inset-bottom, 40px); }
+
+  /* Header */
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .logo-area { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: 44px; height: 44px; border-radius: 12px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: bold; color: #fff;
+    box-shadow: 0 4px 20px rgba(99,102,241,0.3);
+  }
+  .title { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; color: #f0f0f0; }
+  .subtitle { font-size: 11px; color: #8888aa; letter-spacing: 2px; text-transform: uppercase; }
+  .settings-btn {
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+    color: #aaa; width: 40px; height: 40px; border-radius: 10px; font-size: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* Settings */
+  .settings-panel {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px; padding: 18px; margin-bottom: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .settings-panel.hidden { display: none; }
+  .setting-group { display: flex; flex-direction: column; gap: 8px; }
+  .setting-label { font-size: 11px; color: #8888aa; text-transform: uppercase; letter-spacing: 1.5px; }
+  .toggle-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .toggle-btn {
+    padding: 7px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04); color: #aaa; font-size: 12px; cursor: pointer;
+    transition: all 0.15s; font-family: inherit;
+  }
+  .toggle-btn.active {
+    background: linear-gradient(135deg, #6366f1, #7c3aed); color: #fff;
+    border: 1px solid rgba(99,102,241,0.5); box-shadow: 0 2px 12px rgba(99,102,241,0.25);
+  }
+  .octave-helper { font-size: 10px; color: #555; margin-top: 2px; }
+
+  /* Stats */
+  .stats-row {
+    display: flex; justify-content: center; gap: 32px; margin-bottom: 24px; padding: 14px 0;
+    border-top: 1px solid rgba(255,255,255,0.06); border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .stat { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .stat-num { font-size: 22px; font-weight: 700; color: #e0e0e0; }
+  .stat-label { font-size: 10px; color: #666680; text-transform: uppercase; letter-spacing: 1.5px; }
+
+  /* Main */
+  .main-area { margin-bottom: 24px; }
+  .start-area { text-align: center; padding: 40px 20px; }
+  .instructions { font-size: 14px; color: #8888aa; line-height: 1.6; margin-bottom: 28px; }
+
+  .big-btn {
+    padding: 14px 36px; border-radius: 12px; border: none;
+    background: linear-gradient(135deg, #6366f1, #7c3aed); color: #fff;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 4px 24px rgba(99,102,241,0.3); font-family: inherit;
+    letter-spacing: 0.5px; transition: transform 0.1s;
+  }
+  .big-btn:active { transform: scale(0.97); }
+
+  /* Playback */
+  .playback-row { display: flex; gap: 8px; justify-content: center; margin-bottom: 24px; flex-wrap: wrap; }
+  .play-btn {
+    padding: 9px 16px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.05); color: #ccc; font-size: 12px; cursor: pointer;
+    font-family: inherit; transition: all 0.15s;
+  }
+  .play-btn:active { background: rgba(255,255,255,0.1); }
+
+  /* Guess */
+  .guess-area { margin-bottom: 20px; }
+  .guess-prompt { text-align: center; font-size: 13px; color: #8888aa; margin-bottom: 16px; }
+  .guess-prompt.correct { color: #4ade80; }
+  .guess-prompt.wrong { color: #f87171; }
+
+  .note-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 0 4px; }
+  .note-btn {
+    padding: 14px 6px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04); color: #ccc; font-size: 13px; cursor: pointer;
+    font-family: inherit; display: flex; flex-direction: column; align-items: center;
+    gap: 3px; transition: all 0.15s; user-select: none; -webkit-user-select: none;
+  }
+  .note-btn:active { transform: scale(0.95); }
+  .note-btn.selected {
+    background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(124,58,237,0.3));
+    border: 1px solid rgba(99,102,241,0.6); color: #fff;
+    box-shadow: 0 2px 12px rgba(99,102,241,0.2);
+  }
+  .note-btn.correct-note {
+    background: linear-gradient(135deg, rgba(74,222,128,0.2), rgba(34,197,94,0.2));
+    border: 1px solid rgba(74,222,128,0.5); color: #4ade80;
+  }
+  .note-btn.missed {
+    background: linear-gradient(135deg, rgba(251,191,36,0.15), rgba(245,158,11,0.15));
+    border: 1px solid rgba(251,191,36,0.4); color: #fbbf24;
+  }
+  .note-btn.wrong-note {
+    background: linear-gradient(135deg, rgba(248,113,113,0.15), rgba(239,68,68,0.15));
+    border: 1px solid rgba(248,113,113,0.4); color: #f87171;
+  }
+  .note-name { font-weight: 600; font-size: 14px; }
+  .note-degree { font-size: 10px; opacity: 0.5; }
+
+  /* Actions */
+  .action-row { display: flex; justify-content: center; margin-top: 20px; }
+  .reveal-btn {
+    padding: 14px 48px; border-radius: 12px; border: none;
+    background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 4px 24px rgba(245,158,11,0.25); font-family: inherit;
+    transition: all 0.15s;
+  }
+  .reveal-btn:active { transform: scale(0.97); }
+  .reveal-btn:disabled { opacity: 0.4; cursor: default; }
+
+  .answer-box {
+    text-align: center; margin-top: 18px; padding: 12px 18px;
+    background: rgba(255,255,255,0.04); border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.08); font-size: 15px; font-weight: 600;
+  }
+  .answer-label { color: #8888aa; font-weight: 400; font-size: 12px; }
+  .answer-degree { color: #6366f1; font-size: 13px; }
+
+  /* History */
+  .history-section { margin-top: 8px; }
+  .history-title { font-size: 11px; color: #666680; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 10px; }
+  .history-list { display: flex; flex-direction: column; gap: 4px; }
+  .history-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 12px; background: rgba(255,255,255,0.02); border-radius: 8px;
+    border-left: 3px solid; font-size: 13px;
+  }
+  .history-answer { color: #aaa; }
+  .history-correct { color: #4ade80; font-weight: 700; }
+  .history-wrong { color: #f87171; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="bg-grain"></div>
+<div class="inner has-notch" id="app"></div>
+
+<script>
+// ─── Audio Engine ───
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const ENHARMONIC = {"C#":"Db","D#":"Eb","F#":"Gb","G#":"Ab","A#":"Bb"};
+const DEGREE_LABELS = ["1","♭2","2","♭3","3","4","♯4/♭5","5","♭6","6","♭7","7"];
+const SOLFEGE = ["Do","Ra","Re","Me","Mi","Fa","Fi/Se","Sol","Le","La","Te","Ti"];
+
+const CADENCE_PATTERNS = {
+  "I-IV-V-I": [0,5,7,0],
+  "I-IV-I-V-I": [0,5,0,7,0],
+  "I-vi-IV-V-I": [0,9,5,7,0],
+};
+
+const INSTRUMENTS = {
+  piano:  { name:"Piano",     attack:0.01, decay:0.3, sustain:0.4, release:0.8, type:"triangle", harmonics:true },
+  epiano: { name:"E-Piano",   attack:0.01, decay:0.5, sustain:0.3, release:1.0, type:"sine",     harmonics:true, tremolo:true },
+  synth:  { name:"Soft Synth",attack:0.05, decay:0.2, sustain:0.6, release:1.2, type:"sine",     harmonics:false, pad:true },
+};
+
+const TEMPO_SETTINGS = {
+  slow:   { chordSpacing:1.2, chordDuration:1.0, pauseBeforeGuess:0.9, guessDuration:2.0 },
+  medium: { chordSpacing:0.85, chordDuration:0.7, pauseBeforeGuess:0.6, guessDuration:1.6 },
+  fast:   { chordSpacing:0.55, chordDuration:0.45, pauseBeforeGuess:0.4, guessDuration:1.2 },
+};
+
+function noteToFreq(note, octave) {
+  const idx = NOTE_NAMES.indexOf(note);
+  const midi = 12 * (octave + 1) + idx;
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+let audioCtx = null;
+function ensureCtx() {
+  if (!audioCtx || audioCtx.state === "closed") audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx;
+}
+
+function playNote(ctx, freq, startTime, duration, instrumentKey, volume) {
+  volume = volume || 0.25;
+  const ins = INSTRUMENTS[instrumentKey];
+  const master = ctx.createGain();
+  master.gain.value = 0;
+  master.connect(ctx.destination);
+
+  const osc1 = ctx.createOscillator();
+  osc1.type = ins.type;
+  osc1.frequency.value = freq;
+  osc1.connect(master);
+  osc1.start(startTime);
+  osc1.stop(startTime + duration + ins.release);
+
+  if (ins.harmonics) {
+    const osc2 = ctx.createOscillator(); osc2.type = "sine"; osc2.frequency.value = freq * 2;
+    const g2 = ctx.createGain(); g2.gain.value = instrumentKey === "piano" ? 0.15 : 0.08;
+    osc2.connect(g2); g2.connect(master); osc2.start(startTime); osc2.stop(startTime + duration + ins.release);
+
+    const osc3 = ctx.createOscillator(); osc3.type = "sine"; osc3.frequency.value = freq * 3;
+    const g3 = ctx.createGain(); g3.gain.value = instrumentKey === "piano" ? 0.06 : 0.03;
+    osc3.connect(g3); g3.connect(master); osc3.start(startTime); osc3.stop(startTime + duration + ins.release);
+  }
+  if (ins.pad) {
+    const osc4 = ctx.createOscillator(); osc4.type = "triangle"; osc4.frequency.value = freq * 0.999;
+    const g4 = ctx.createGain(); g4.gain.value = 0.3;
+    osc4.connect(g4); g4.connect(master); osc4.start(startTime); osc4.stop(startTime + duration + ins.release);
+  }
+  if (ins.tremolo) {
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 4.5;
+    const lg = ctx.createGain(); lg.gain.value = 0.06;
+    lfo.connect(lg); lg.connect(master.gain); lfo.start(startTime); lfo.stop(startTime + duration + ins.release);
+  }
+
+  const g = master.gain;
+  g.setValueAtTime(0, startTime);
+  g.linearRampToValueAtTime(volume, startTime + ins.attack);
+  g.linearRampToValueAtTime(volume * ins.sustain, startTime + ins.attack + ins.decay);
+  g.setValueAtTime(volume * ins.sustain, startTime + duration);
+  g.linearRampToValueAtTime(0, startTime + duration + ins.release);
+}
+
+function playChord(ctx, rootSemitone, octave, startTime, duration, instrumentKey, volume) {
+  const root = rootSemitone % 12;
+  const freqs = [
+    noteToFreq(NOTE_NAMES[root], octave),
+    noteToFreq(NOTE_NAMES[(root+4)%12], root+4>=12 ? octave+1 : octave),
+    noteToFreq(NOTE_NAMES[(root+7)%12], root+7>=12 ? octave+1 : octave),
+  ];
+  freqs.forEach(f => playNote(ctx, f, startTime, duration, instrumentKey, volume));
+}
+
+function getNoteDisplay(idx) {
+  const name = NOTE_NAMES[idx];
+  const enh = ENHARMONIC[name];
+  return enh ? name + "/" + enh : name;
+}
+
+// ─── State ───
+const state = {
+  instrument: "epiano",
+  cadenceType: "I-IV-V-I",
+  polyphony: 1,
+  octaveMode: "single",
+  tempo: "medium",
+  mysteryNotes: null,
+  guesses: [],
+  revealed: false,
+  gameActive: false,
+  streak: 0,
+  bestStreak: 0,
+  totalCorrect: 0,
+  totalAttempts: 0,
+  showSettings: false,
+  history: [],
+};
+
+function playCadenceSeq() {
+  const ctx = ensureCtx();
+  const t = TEMPO_SETTINGS[state.tempo];
+  const pattern = CADENCE_PATTERNS[state.cadenceType];
+  const now = ctx.currentTime + 0.05;
+  pattern.forEach((semitone, i) => {
+    playChord(ctx, semitone, 4, now + i * t.chordSpacing, t.chordDuration, state.instrument, 0.18);
+  });
+  return now + pattern.length * t.chordSpacing;
+}
+
+function playMysterySeq(notes) {
+  const ctx = ensureCtx();
+  const t = TEMPO_SETTINGS[state.tempo];
+  const now = ctx.currentTime + 0.05;
+  const ns = notes || state.mysteryNotes;
+  if (!ns) return;
+  ns.forEach(n => {
+    playNote(ctx, noteToFreq(NOTE_NAMES[n.pitch], n.octave), now, t.guessDuration, state.instrument, 0.3);
+  });
+}
+
+function previewNote(idx) {
+  const ctx = ensureCtx();
+  let oct = 4;
+  if (state.mysteryNotes && state.mysteryNotes.length > 0) {
+    oct = Math.round(state.mysteryNotes.reduce((s, n) => s + n.octave, 0) / state.mysteryNotes.length);
+  }
+  playNote(ctx, noteToFreq(NOTE_NAMES[idx], oct), ctx.currentTime + 0.02, 0.5, state.instrument, 0.2);
+}
+
+function startRound() {
+  const notes = [];
+  const lowOct = state.octaveMode === "single" ? 4 : 2;
+  const highOct = state.octaveMode === "single" ? 4 : 6;
+  for (let i = 0; i < state.polyphony; i++) {
+    let pitch, octave;
+    do {
+      pitch = Math.floor(Math.random() * 12);
+      octave = lowOct + Math.floor(Math.random() * (highOct - lowOct + 1));
+    } while (notes.some(n => n.pitch === pitch && n.octave === octave));
+    notes.push({ pitch, octave });
+  }
+  notes.sort((a, b) => a.octave * 12 + a.pitch - (b.octave * 12 + b.pitch));
+  state.mysteryNotes = notes;
+  state.guesses = [];
+  state.revealed = false;
+  state.gameActive = true;
+
+  const cadenceEnd = playCadenceSeq();
+  const ctx = audioCtx;
+  const t = TEMPO_SETTINGS[state.tempo];
+  const noteStart = cadenceEnd + t.pauseBeforeGuess;
+  notes.forEach(n => {
+    playNote(ctx, noteToFreq(NOTE_NAMES[n.pitch], n.octave), noteStart, t.guessDuration, state.instrument, 0.3);
+  });
+  render();
+}
+
+function replayAll() {
+  const cadenceEnd = playCadenceSeq();
+  const ctx = audioCtx;
+  const t = TEMPO_SETTINGS[state.tempo];
+  if (state.mysteryNotes) {
+    const noteStart = cadenceEnd + t.pauseBeforeGuess;
+    state.mysteryNotes.forEach(n => {
+      playNote(ctx, noteToFreq(NOTE_NAMES[n.pitch], n.octave), noteStart, t.guessDuration, state.instrument, 0.3);
+    });
+  }
+}
+
+function toggleGuess(idx) {
+  if (state.revealed) return;
+  const i = state.guesses.indexOf(idx);
+  if (i >= 0) state.guesses.splice(i, 1);
+  else state.guesses.push(idx);
+  state.guesses.sort((a, b) => a - b);
+  render();
+}
+
+function handleReveal() {
+  if (!state.mysteryNotes) return;
+  state.revealed = true;
+  const mp = state.mysteryNotes.map(n => n.pitch).sort((a, b) => a - b);
+  const ug = [...new Set(state.guesses)].sort((a, b) => a - b);
+  const correct = ug.length === mp.length && ug.every((g, i) => g === mp[i]);
+  state.totalAttempts++;
+  if (correct) { state.streak++; state.bestStreak = Math.max(state.bestStreak, state.streak); state.totalCorrect++; }
+  else state.streak = 0;
+  state.history.unshift({ mystery: state.mysteryNotes.slice(), guess: state.guesses.slice(), correct });
+  if (state.history.length > 20) state.history.length = 20;
+  render();
+}
+
+function isCorrect() {
+  if (!state.mysteryNotes || !state.revealed) return null;
+  const mp = state.mysteryNotes.map(n => n.pitch).sort((a, b) => a - b);
+  const ug = [...new Set(state.guesses)].sort((a, b) => a - b);
+  return ug.length === mp.length && ug.every((g, i) => g === mp[i]);
+}
+
+function guessButtonClass(idx) {
+  if (!state.revealed) return state.guesses.includes(idx) ? "selected" : "";
+  const mp = state.mysteryNotes ? state.mysteryNotes.map(n => n.pitch) : [];
+  const isMystery = mp.includes(idx);
+  const isGuessed = state.guesses.includes(idx);
+  if (isMystery && isGuessed) return "correct-note";
+  if (isMystery && !isGuessed) return "missed";
+  if (!isMystery && isGuessed) return "wrong-note";
+  return "";
+}
+
+function requiredGuesses() {
+  if (state.mysteryNotes) return new Set(state.mysteryNotes.map(n => n.pitch)).size;
+  return state.polyphony;
+}
+
+// ─── Settings Helpers ───
+function setSetting(key, val) { state[key] = val; render(); }
+
+// ─── Render ───
+function render() {
+  const app = document.getElementById("app");
+  const acc = state.totalAttempts > 0 ? Math.round((state.totalCorrect / state.totalAttempts) * 100) : 0;
+
+  let settingsHTML = "";
+  if (state.showSettings) {
+    settingsHTML = `<div class="settings-panel">
+      <div class="setting-group">
+        <label class="setting-label">Instrument</label>
+        <div class="toggle-row">
+          ${Object.entries(INSTRUMENTS).map(([k,v]) =>
+            `<button class="toggle-btn ${state.instrument===k?'active':''}" onclick="setSetting('instrument','${k}')">${v.name}</button>`
+          ).join("")}
+        </div>
+      </div>
+      <div class="setting-group">
+        <label class="setting-label">Cadence</label>
+        <div class="toggle-row">
+          ${Object.keys(CADENCE_PATTERNS).map(k =>
+            `<button class="toggle-btn ${state.cadenceType===k?'active':''}" onclick="setSetting('cadenceType','${k}')">${k}</button>`
+          ).join("")}
+        </div>
+      </div>
+      <div class="setting-group">
+        <label class="setting-label">Tempo</label>
+        <div class="toggle-row">
+          ${[["slow","Slow"],["medium","Medium"],["fast","Fast"]].map(([k,l]) =>
+            `<button class="toggle-btn ${state.tempo===k?'active':''}" onclick="setSetting('tempo','${k}')">${l}</button>`
+          ).join("")}
+        </div>
+      </div>
+      <div class="setting-group">
+        <label class="setting-label">Notes to guess: ${state.polyphony}</label>
+        <div class="toggle-row">
+          ${[1,2,3,4].map(n =>
+            `<button class="toggle-btn ${state.polyphony===n?'active':''}" onclick="setSetting('polyphony',${n})">${n}</button>`
+          ).join("")}
+        </div>
+      </div>
+      <div class="setting-group">
+        <label class="setting-label">Octave Range</label>
+        <div class="toggle-row">
+          <button class="toggle-btn ${state.octaveMode==='single'?'active':''}" onclick="setSetting('octaveMode','single')">One Octave</button>
+          <button class="toggle-btn ${state.octaveMode==='multiple'?'active':''}" onclick="setSetting('octaveMode','multiple')">Multiple Octaves</button>
+        </div>
+        <div class="octave-helper">${state.octaveMode==="single" ? "Notes around middle C (C4)" : "C2 – C6 · two octaves above &amp; below middle C"}</div>
+      </div>
+    </div>`;
+  }
+
+  let mainHTML = "";
+  if (!state.gameActive) {
+    mainHTML = `<div class="start-area">
+      <p class="instructions">Listen to the cadence to establish the key, then identify the mystery ${state.polyphony > 1 ? "notes" : "note"}.</p>
+      <button class="big-btn" onclick="startRound()">Start Round</button>
+    </div>`;
+  } else {
+    const revealedResult = state.revealed ? isCorrect() : null;
+    const promptClass = revealedResult === true ? "correct" : revealedResult === false ? "wrong" : "";
+    const promptText = state.revealed
+      ? (revealedResult ? "✓ Correct!" : "✗ Not quite")
+      : `Select ${state.polyphony} note${state.polyphony > 1 ? "s" : ""} — tap to preview & select`;
+
+    const noteButtons = NOTE_NAMES.map((_, idx) => {
+      const cls = guessButtonClass(idx);
+      return `<button class="note-btn ${cls}" onclick="previewNote(${idx});toggleGuess(${idx})">
+        <span class="note-name">${getNoteDisplay(idx)}</span>
+        <span class="note-degree">${DEGREE_LABELS[idx]} ${SOLFEGE[idx]}</span>
+      </button>`;
+    }).join("");
+
+    let actionHTML = "";
+    if (!state.revealed) {
+      const needed = requiredGuesses();
+      const dis = state.guesses.length !== needed;
+      actionHTML = `<button class="reveal-btn" ${dis?'disabled':''} style="opacity:${dis?0.4:1}" onclick="handleReveal()">Reveal</button>`;
+    } else {
+      actionHTML = `<button class="big-btn" onclick="startRound()">Next Round</button>`;
+    }
+
+    let answerHTML = "";
+    if (state.revealed && state.mysteryNotes) {
+      const names = state.mysteryNotes.map(n => getNoteDisplay(n.pitch) + n.octave).join(", ");
+      const degrees = state.mysteryNotes.map(n => DEGREE_LABELS[n.pitch]).join(", ");
+      answerHTML = `<div class="answer-box"><span class="answer-label">Answer:</span> ${names} <span class="answer-degree">(${degrees})</span></div>`;
+    }
+
+    mainHTML = `
+      <div class="playback-row">
+        <button class="play-btn" onclick="replayAll()">▶ Replay All</button>
+        <button class="play-btn" onclick="playCadenceSeq()">Cadence Only</button>
+        <button class="play-btn" onclick="playMysterySeq()">${state.polyphony > 1 ? "Notes" : "Note"} Only</button>
+      </div>
+      <div class="guess-area">
+        <p class="guess-prompt ${promptClass}">${promptText}</p>
+        <div class="note-grid">${noteButtons}</div>
+      </div>
+      <div class="action-row">${actionHTML}</div>
+      ${answerHTML}`;
+  }
+
+  let historyHTML = "";
+  if (state.history.length > 0) {
+    const items = state.history.slice(0, 8).map(h => {
+      const borderColor = h.correct ? "#4ade80" : "#f87171";
+      const label = h.mystery.map(n => NOTE_NAMES[n.pitch] + n.octave).join(", ");
+      const icon = h.correct ? "✓" : "✗";
+      const iconClass = h.correct ? "history-correct" : "history-wrong";
+      return `<div class="history-item" style="border-left-color:${borderColor}">
+        <span class="history-answer">${label}</span>
+        <span class="${iconClass}">${icon}</span>
+      </div>`;
+    }).join("");
+    historyHTML = `<div class="history-section"><h3 class="history-title">Recent</h3><div class="history-list">${items}</div></div>`;
+  }
+
+  app.innerHTML = `
+    <header class="header">
+      <div class="logo-area">
+        <div class="logo-icon">♪</div>
+        <div><div class="title">THE Ear Training Game</div><div class="subtitle">chromatic pitch recognition</div></div>
+      </div>
+      <button class="settings-btn" onclick="state.showSettings=!state.showSettings;render()">${state.showSettings ? "✕" : "⚙"}</button>
+    </header>
+    ${settingsHTML}
+    <div class="stats-row">
+      <div class="stat"><span class="stat-num">${state.streak}</span><span class="stat-label">streak</span></div>
+      <div class="stat"><span class="stat-num">${state.bestStreak}</span><span class="stat-label">best</span></div>
+      <div class="stat"><span class="stat-num">${acc}%</span><span class="stat-label">accuracy</span></div>
+    </div>
+    <div class="main-area">${mainHTML}</div>
+    ${historyHTML}`;
+}
+
+// Init
+render();
+</script>
+</body>
+</html>
