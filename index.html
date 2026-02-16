@@ -310,11 +310,14 @@ const state = {
 // Based on Kellman's ARTS algorithm and spaced repetition research
 const adaptive = {
   trialNumber: 0,
+  roundStartTime: 0,
   pitchStats: Array.from({length: 12}, () => ({
     presentations: 0,
     correct: 0,
     lastSeenTrial: -100,
     consecutiveCorrect: 0,
+    recentResults: [],
+    lastRT: 0,
   })),
   confusionMatrix: Array.from({length: 12}, () => Array(12).fill(0)),
   previousRoundPitches: [],
@@ -342,18 +345,29 @@ function computePriority(pitchIdx) {
   const stats = adaptive.pitchStats[pitchIdx];
   const trialsSinceSeen = adaptive.trialNumber - stats.lastSeenTrial;
   let priority = 1.0;
-  if (stats.presentations >= 2) {
-    const errorRate = 1 - (stats.correct / stats.presentations);
+  // Error boost: recency-weighted (last 6 trials) instead of cumulative average
+  if (stats.recentResults.length >= 2) {
+    const recentCorrect = stats.recentResults.reduce((a, b) => a + b, 0);
+    const errorRate = 1 - (recentCorrect / stats.recentResults.length);
     priority += errorRate * 4.0;
   }
+  // Spacing boost: modulated by response time (ARTS core mechanism)
   if (stats.presentations > 0) {
-    priority += Math.min(trialsSinceSeen * 0.2, 3.0);
+    let spacingCoeff = 0.2;
+    if (stats.lastRT > 0 && stats.recentResults.length > 0 && stats.recentResults[stats.recentResults.length - 1] === 1) {
+      if (stats.lastRT < 3000) spacingCoeff = 0.1;       // fast correct → longer gap
+      else if (stats.lastRT > 8000) spacingCoeff = 0.4;   // slow correct → shorter gap (fragile)
+    }
+    priority += Math.min(trialsSinceSeen * spacingCoeff, 3.0);
   }
+  // Confusion boost
   const row = adaptive.confusionMatrix[pitchIdx];
   const colSum = adaptive.confusionMatrix.reduce((a, r) => a + r[pitchIdx], 0);
   const totalConfusion = row.reduce((a, b) => a + b, 0) + colSum;
   priority += Math.min(totalConfusion * 0.5, 3.0);
-  if (stats.consecutiveCorrect >= 3) priority *= 0.5;
+  // Mastery dampening: requires consecutive correct AND fast responses (fluency)
+  const isFluent = stats.consecutiveCorrect >= 3 && stats.lastRT > 0 && stats.lastRT < 5000;
+  if (isFluent) priority *= 0.5;
   if (adaptive.uncoveredPitches.has(pitchIdx)) priority += 5.0;
   return Math.max(priority, 0.2);
 }
@@ -361,10 +375,24 @@ function computePriority(pitchIdx) {
 function selectPitch(excludePitches) {
   const priorities = Array.from({length: 12}, (_, i) => computePriority(i));
   excludePitches.forEach(p => { priorities[p] = 0; });
-  const available = 12 - excludePitches.length;
+  // Enforced minimum delay (ARTS D parameter): pitches seen within last 2 trials
+  // cannot reappear — prevents working-memory-based false learning
+  // Only applied when enough pitches remain (avoids starvation at high polyphony)
+  const minDelay = 2;
+  const delayBlocked = [];
+  for (let i = 0; i < 12; i++) {
+    const seen = adaptive.pitchStats[i].lastSeenTrial;
+    if (priorities[i] > 0 && seen >= 0 && adaptive.trialNumber - seen < minDelay) delayBlocked.push(i);
+  }
+  const wouldRemain = priorities.filter(p => p > 0).length - delayBlocked.length;
+  const stillNeeded = state.polyphony - excludePitches.length;
+  if (wouldRemain >= stillNeeded) {
+    delayBlocked.forEach(i => { priorities[i] = 0; });
+  }
+  const available = priorities.filter(p => p > 0).length;
   if (available > state.polyphony + 2) {
     adaptive.previousRoundPitches.forEach(p => {
-      if (!excludePitches.includes(p)) priorities[p] *= 0.1;
+      if (priorities[p] > 0) priorities[p] *= 0.1;
     });
   }
   if (state.polyphony === 2 && excludePitches.length === 1 && adaptive.combinationDeck.length > 0) {
@@ -393,17 +421,23 @@ function selectPitch(excludePitches) {
 
 function updateAdaptiveStats() {
   adaptive.trialNumber++;
+  const rt = adaptive.roundStartTime > 0 ? performance.now() - adaptive.roundStartTime : 0;
   const mysteryPitches = state.mysteryNotes.map(n => n.pitch);
   const guessedPitches = [...new Set(state.guesses)];
   mysteryPitches.forEach(pitch => {
     const stats = adaptive.pitchStats[pitch];
     stats.presentations++;
     stats.lastSeenTrial = adaptive.trialNumber;
-    if (guessedPitches.includes(pitch)) {
+    const wasCorrect = guessedPitches.includes(pitch);
+    stats.recentResults.push(wasCorrect ? 1 : 0);
+    if (stats.recentResults.length > 6) stats.recentResults.shift();
+    if (wasCorrect) {
       stats.correct++;
       stats.consecutiveCorrect++;
+      stats.lastRT = rt;
     } else {
       stats.consecutiveCorrect = 0;
+      stats.lastRT = 0;
       guessedPitches.forEach(g => {
         if (!mysteryPitches.includes(g)) {
           adaptive.confusionMatrix[pitch][g]++;
@@ -411,6 +445,10 @@ function updateAdaptiveStats() {
       });
     }
   });
+  // Confusion matrix decay: resolved confusions fade over time (0.95 per trial)
+  for (let i = 0; i < 12; i++)
+    for (let j = 0; j < 12; j++)
+      adaptive.confusionMatrix[i][j] *= 0.95;
 }
 
 function playCadenceSeq(dest) {
@@ -486,6 +524,9 @@ function startRound() {
   notes.forEach(n => {
     playNote(ctx, noteToFreq(NOTE_NAMES[n.pitch], n.octave), noteStart, t.guessDuration, state.instrument, 0.3, bus);
   });
+  // RT clock starts when mystery notes begin playing (not when cadence starts)
+  const delayMs = (noteStart - ctx.currentTime) * 1000;
+  setTimeout(() => { adaptive.roundStartTime = performance.now(); }, Math.max(0, delayMs));
   render();
 }
 
