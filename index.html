@@ -8,8 +8,8 @@
 <meta name="apple-mobile-web-app-title" content="THE Ear Training Game">
 <meta name="theme-color" content="#0c0c14">
 <title>THE Ear Training Game</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♪</text></svg>">
-<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%236366f1'/><text x='50' y='70' font-size='60' text-anchor='middle' fill='white'>♪</text></svg>">
+<link rel="icon" href="EarTrainingGameThumbnail.png">
+<link rel="apple-touch-icon" href="EarTrainingGameThumbnail.png">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body {
@@ -37,11 +37,10 @@
   .logo-area { display: flex; align-items: center; gap: 12px; }
   .logo-icon {
     width: 44px; height: 44px; border-radius: 12px;
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 22px; font-weight: bold; color: #fff;
+    overflow: hidden;
     box-shadow: 0 4px 20px rgba(99,102,241,0.3);
   }
+  .logo-icon img { width: 100%; height: 100%; object-fit: cover; }
   .title { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; color: #f0f0f0; }
   .subtitle { font-size: 11px; color: #8888aa; letter-spacing: 2px; text-transform: uppercase; }
   .settings-btn {
@@ -207,6 +206,7 @@ function noteToFreq(note, octave) {
 
 let audioCtx = null;
 let playbackBus = null;
+let playbackOscillators = [];
 function ensureCtx() {
   if (!audioCtx || audioCtx.state === "closed") audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === "suspended") audioCtx.resume();
@@ -214,6 +214,9 @@ function ensureCtx() {
 }
 
 function stopPlayback() {
+  const now = audioCtx ? audioCtx.currentTime : 0;
+  playbackOscillators.forEach(osc => { try { osc.stop(now); } catch(e) {} });
+  playbackOscillators = [];
   if (playbackBus) { playbackBus.disconnect(); playbackBus = null; }
 }
 
@@ -238,20 +241,24 @@ function playNote(ctx, freq, startTime, duration, instrumentKey, volume, dest) {
   osc1.connect(master);
   osc1.start(startTime);
   osc1.stop(startTime + duration + ins.release);
+  if (dest) playbackOscillators.push(osc1);
 
   if (ins.harmonics) {
     const osc2 = ctx.createOscillator(); osc2.type = "sine"; osc2.frequency.value = freq * 2;
     const g2 = ctx.createGain(); g2.gain.value = instrumentKey === "piano" ? 0.15 : 0.08;
     osc2.connect(g2); g2.connect(master); osc2.start(startTime); osc2.stop(startTime + duration + ins.release);
+    if (dest) playbackOscillators.push(osc2);
 
     const osc3 = ctx.createOscillator(); osc3.type = "sine"; osc3.frequency.value = freq * 3;
     const g3 = ctx.createGain(); g3.gain.value = instrumentKey === "piano" ? 0.06 : 0.03;
     osc3.connect(g3); g3.connect(master); osc3.start(startTime); osc3.stop(startTime + duration + ins.release);
+    if (dest) playbackOscillators.push(osc3);
   }
   if (ins.pad) {
     const osc4 = ctx.createOscillator(); osc4.type = "triangle"; osc4.frequency.value = freq * 0.999;
     const g4 = ctx.createGain(); g4.gain.value = 0.3;
     osc4.connect(g4); g4.connect(master); osc4.start(startTime); osc4.stop(startTime + duration + ins.release);
+    if (dest) playbackOscillators.push(osc4);
   }
 
 
@@ -673,7 +680,7 @@ function render() {
   app.innerHTML = `
     <header class="header">
       <div class="logo-area">
-        <div class="logo-icon">♪</div>
+        <div class="logo-icon"><img src="EarTrainingGameThumbnail.png" alt="THE Ear Training Game"></div>
         <div><div class="title">THE Ear Training Game</div><div class="subtitle">chromatic pitch recognition</div></div>
       </div>
       <button class="settings-btn" onclick="state.showSettings=!state.showSettings;render()">${state.showSettings ? "✕" : "⚙"}</button>
