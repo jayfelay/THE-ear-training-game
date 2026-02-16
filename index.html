@@ -382,11 +382,13 @@ function selectPitch(excludePitches) {
     return candidates[Math.floor(Math.random() * candidates.length)];
   }
   let r = Math.random() * total;
+  let lastNonZero = 0;
   for (let i = 0; i < 12; i++) {
+    if (priorities[i] > 0) lastNonZero = i;
     r -= priorities[i];
     if (r <= 0) return i;
   }
-  return 11;
+  return lastNonZero;
 }
 
 function updateAdaptiveStats() {
