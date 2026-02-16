@@ -207,6 +207,7 @@ function noteToFreq(note, octave) {
 
 let audioCtx = null;
 let playbackBus = null;
+let playbackOscillators = [];
 function ensureCtx() {
   if (!audioCtx || audioCtx.state === "closed") audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === "suspended") audioCtx.resume();
@@ -214,6 +215,9 @@ function ensureCtx() {
 }
 
 function stopPlayback() {
+  const now = audioCtx ? audioCtx.currentTime : 0;
+  playbackOscillators.forEach(osc => { try { osc.stop(now); } catch(e) {} });
+  playbackOscillators = [];
   if (playbackBus) { playbackBus.disconnect(); playbackBus = null; }
 }
 
@@ -238,20 +242,24 @@ function playNote(ctx, freq, startTime, duration, instrumentKey, volume, dest) {
   osc1.connect(master);
   osc1.start(startTime);
   osc1.stop(startTime + duration + ins.release);
+  if (dest) playbackOscillators.push(osc1);
 
   if (ins.harmonics) {
     const osc2 = ctx.createOscillator(); osc2.type = "sine"; osc2.frequency.value = freq * 2;
     const g2 = ctx.createGain(); g2.gain.value = instrumentKey === "piano" ? 0.15 : 0.08;
     osc2.connect(g2); g2.connect(master); osc2.start(startTime); osc2.stop(startTime + duration + ins.release);
+    if (dest) playbackOscillators.push(osc2);
 
     const osc3 = ctx.createOscillator(); osc3.type = "sine"; osc3.frequency.value = freq * 3;
     const g3 = ctx.createGain(); g3.gain.value = instrumentKey === "piano" ? 0.06 : 0.03;
     osc3.connect(g3); g3.connect(master); osc3.start(startTime); osc3.stop(startTime + duration + ins.release);
+    if (dest) playbackOscillators.push(osc3);
   }
   if (ins.pad) {
     const osc4 = ctx.createOscillator(); osc4.type = "triangle"; osc4.frequency.value = freq * 0.999;
     const g4 = ctx.createGain(); g4.gain.value = 0.3;
     osc4.connect(g4); g4.connect(master); osc4.start(startTime); osc4.stop(startTime + duration + ins.release);
+    if (dest) playbackOscillators.push(osc4);
   }
 
 
