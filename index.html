@@ -190,7 +190,6 @@ const CADENCE_PATTERNS = {
 
 const INSTRUMENTS = {
   piano:  { name:"Piano",     attack:0.01, decay:0.3, sustain:0.4, release:0.8, type:"triangle", harmonics:true },
-  epiano: { name:"E-Piano",   attack:0.01, decay:0.5, sustain:0.3, release:1.0, type:"sine",     harmonics:true, tremolo:true },
   synth:  { name:"Soft Synth",attack:0.05, decay:0.2, sustain:0.6, release:1.2, type:"sine",     harmonics:false, pad:true },
 };
 
@@ -241,11 +240,7 @@ function playNote(ctx, freq, startTime, duration, instrumentKey, volume) {
     const g4 = ctx.createGain(); g4.gain.value = 0.3;
     osc4.connect(g4); g4.connect(master); osc4.start(startTime); osc4.stop(startTime + duration + ins.release);
   }
-  if (ins.tremolo) {
-    const lfo = ctx.createOscillator(); lfo.frequency.value = 4.5;
-    const lg = ctx.createGain(); lg.gain.value = 0.06;
-    lfo.connect(lg); lg.connect(master.gain); lfo.start(startTime); lfo.stop(startTime + duration + ins.release);
-  }
+
 
   const g = master.gain;
   g.setValueAtTime(0, startTime);
@@ -273,7 +268,7 @@ function getNoteDisplay(idx) {
 
 // ─── State ───
 const state = {
-  instrument: "epiano",
+  instrument: "synth",
   cadenceType: "I-IV-V-I",
   polyphony: 1,
   octaveMode: "single",
@@ -289,6 +284,84 @@ const state = {
   showSettings: false,
   history: [],
 };
+
+// ─── Adaptive Learning (ARTS-inspired) ───
+// Combines spaced repetition, interleaving, and confusion pair detection
+// Based on Kellman's ARTS algorithm and spaced repetition research
+const adaptive = {
+  trialNumber: 0,
+  pitchStats: Array.from({length: 12}, () => ({
+    presentations: 0,
+    correct: 0,
+    lastSeenTrial: -100,
+    consecutiveCorrect: 0,
+  })),
+  confusionMatrix: Array.from({length: 12}, () => Array(12).fill(0)),
+  previousRoundPitches: [],
+};
+
+function computePriority(pitchIdx) {
+  const stats = adaptive.pitchStats[pitchIdx];
+  const trialsSinceSeen = adaptive.trialNumber - stats.lastSeenTrial;
+  let priority = 1.0;
+  if (stats.presentations >= 2) {
+    const errorRate = 1 - (stats.correct / stats.presentations);
+    priority += errorRate * 4.0;
+  }
+  if (stats.presentations > 0) {
+    priority += Math.min(trialsSinceSeen * 0.2, 3.0);
+  }
+  const row = adaptive.confusionMatrix[pitchIdx];
+  const colSum = adaptive.confusionMatrix.reduce((a, r) => a + r[pitchIdx], 0);
+  const totalConfusion = row.reduce((a, b) => a + b, 0) + colSum;
+  priority += Math.min(totalConfusion * 0.5, 3.0);
+  if (stats.consecutiveCorrect >= 3) priority *= 0.5;
+  return Math.max(priority, 0.2);
+}
+
+function selectPitch(excludePitches) {
+  const priorities = Array.from({length: 12}, (_, i) => computePriority(i));
+  excludePitches.forEach(p => { priorities[p] = 0; });
+  const available = 12 - excludePitches.length;
+  if (available > state.polyphony + 2) {
+    adaptive.previousRoundPitches.forEach(p => {
+      if (!excludePitches.includes(p)) priorities[p] *= 0.1;
+    });
+  }
+  const total = priorities.reduce((a, b) => a + b, 0);
+  if (total === 0) {
+    const candidates = Array.from({length:12}, (_,i) => i).filter(i => !excludePitches.includes(i));
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  }
+  let r = Math.random() * total;
+  for (let i = 0; i < 12; i++) {
+    r -= priorities[i];
+    if (r <= 0) return i;
+  }
+  return 11;
+}
+
+function updateAdaptiveStats() {
+  adaptive.trialNumber++;
+  const mysteryPitches = state.mysteryNotes.map(n => n.pitch);
+  const guessedPitches = [...new Set(state.guesses)];
+  mysteryPitches.forEach(pitch => {
+    const stats = adaptive.pitchStats[pitch];
+    stats.presentations++;
+    stats.lastSeenTrial = adaptive.trialNumber;
+    if (guessedPitches.includes(pitch)) {
+      stats.correct++;
+      stats.consecutiveCorrect++;
+    } else {
+      stats.consecutiveCorrect = 0;
+      guessedPitches.forEach(g => {
+        if (!mysteryPitches.includes(g)) {
+          adaptive.confusionMatrix[pitch][g]++;
+        }
+      });
+    }
+  });
+}
 
 function playCadenceSeq() {
   const ctx = ensureCtx();
@@ -326,13 +399,12 @@ function startRound() {
   const lowOct = state.octaveMode === "single" ? 4 : 2;
   const highOct = state.octaveMode === "single" ? 4 : 6;
   for (let i = 0; i < state.polyphony; i++) {
-    let pitch, octave;
-    do {
-      pitch = Math.floor(Math.random() * 12);
-      octave = lowOct + Math.floor(Math.random() * (highOct - lowOct + 1));
-    } while (notes.some(n => n.pitch === pitch && n.octave === octave));
+    const usedPitches = notes.map(n => n.pitch);
+    const pitch = selectPitch(usedPitches);
+    const octave = lowOct + Math.floor(Math.random() * (highOct - lowOct + 1));
     notes.push({ pitch, octave });
   }
+  adaptive.previousRoundPitches = notes.map(n => n.pitch);
   notes.sort((a, b) => a.octave * 12 + a.pitch - (b.octave * 12 + b.pitch));
   state.mysteryNotes = notes;
   state.guesses = [];
@@ -381,6 +453,7 @@ function handleReveal() {
   else state.streak = 0;
   state.history.unshift({ mystery: state.mysteryNotes.slice(), guess: state.guesses.slice(), correct });
   if (state.history.length > 20) state.history.length = 20;
+  updateAdaptiveStats();
   render();
 }
 
@@ -445,7 +518,7 @@ function render() {
       <div class="setting-group">
         <label class="setting-label">Notes to guess: ${state.polyphony}</label>
         <div class="toggle-row">
-          ${[1,2,3,4].map(n =>
+          ${[1,2,3,4,5,6,7,8].map(n =>
             `<button class="toggle-btn ${state.polyphony===n?'active':''}" onclick="setSetting('polyphony',${n})">${n}</button>`
           ).join("")}
         </div>
