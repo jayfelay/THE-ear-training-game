@@ -206,18 +206,31 @@ function noteToFreq(note, octave) {
 }
 
 let audioCtx = null;
+let playbackBus = null;
 function ensureCtx() {
   if (!audioCtx || audioCtx.state === "closed") audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === "suspended") audioCtx.resume();
   return audioCtx;
 }
 
-function playNote(ctx, freq, startTime, duration, instrumentKey, volume) {
+function stopPlayback() {
+  if (playbackBus) { playbackBus.disconnect(); playbackBus = null; }
+}
+
+function newPlaybackBus() {
+  stopPlayback();
+  const ctx = ensureCtx();
+  playbackBus = ctx.createGain();
+  playbackBus.connect(ctx.destination);
+  return playbackBus;
+}
+
+function playNote(ctx, freq, startTime, duration, instrumentKey, volume, dest) {
   volume = volume || 0.25;
   const ins = INSTRUMENTS[instrumentKey];
   const master = ctx.createGain();
   master.gain.value = 0;
-  master.connect(ctx.destination);
+  master.connect(dest || ctx.destination);
 
   const osc1 = ctx.createOscillator();
   osc1.type = ins.type;
@@ -250,14 +263,14 @@ function playNote(ctx, freq, startTime, duration, instrumentKey, volume) {
   g.linearRampToValueAtTime(0, startTime + duration + ins.release);
 }
 
-function playChord(ctx, rootSemitone, octave, startTime, duration, instrumentKey, volume) {
+function playChord(ctx, rootSemitone, octave, startTime, duration, instrumentKey, volume, dest) {
   const root = rootSemitone % 12;
   const freqs = [
     noteToFreq(NOTE_NAMES[root], octave),
     noteToFreq(NOTE_NAMES[(root+4)%12], root+4>=12 ? octave+1 : octave),
     noteToFreq(NOTE_NAMES[(root+7)%12], root+7>=12 ? octave+1 : octave),
   ];
-  freqs.forEach(f => playNote(ctx, f, startTime, duration, instrumentKey, volume));
+  freqs.forEach(f => playNote(ctx, f, startTime, duration, instrumentKey, volume, dest));
 }
 
 function getNoteDisplay(idx) {
@@ -391,25 +404,25 @@ function updateAdaptiveStats() {
   });
 }
 
-function playCadenceSeq() {
+function playCadenceSeq(dest) {
   const ctx = ensureCtx();
   const t = TEMPO_SETTINGS[state.tempo];
   const pattern = CADENCE_PATTERNS[state.cadenceType];
   const now = ctx.currentTime + 0.05;
   pattern.forEach((semitone, i) => {
-    playChord(ctx, semitone, 4, now + i * t.chordSpacing, t.chordDuration, state.instrument, 0.18);
+    playChord(ctx, semitone, 4, now + i * t.chordSpacing, t.chordDuration, state.instrument, 0.18, dest);
   });
   return now + pattern.length * t.chordSpacing;
 }
 
-function playMysterySeq(notes) {
+function playMysterySeq(notes, dest) {
   const ctx = ensureCtx();
   const t = TEMPO_SETTINGS[state.tempo];
   const now = ctx.currentTime + 0.05;
   const ns = notes || state.mysteryNotes;
   if (!ns) return;
   ns.forEach(n => {
-    playNote(ctx, noteToFreq(NOTE_NAMES[n.pitch], n.octave), now, t.guessDuration, state.instrument, 0.3);
+    playNote(ctx, noteToFreq(NOTE_NAMES[n.pitch], n.octave), now, t.guessDuration, state.instrument, 0.3, dest);
   });
 }
 
@@ -456,26 +469,38 @@ function startRound() {
   state.revealed = false;
   state.gameActive = true;
 
-  const cadenceEnd = playCadenceSeq();
+  const bus = newPlaybackBus();
+  const cadenceEnd = playCadenceSeq(bus);
   const ctx = audioCtx;
   const t = TEMPO_SETTINGS[state.tempo];
   const noteStart = cadenceEnd + t.pauseBeforeGuess;
   notes.forEach(n => {
-    playNote(ctx, noteToFreq(NOTE_NAMES[n.pitch], n.octave), noteStart, t.guessDuration, state.instrument, 0.3);
+    playNote(ctx, noteToFreq(NOTE_NAMES[n.pitch], n.octave), noteStart, t.guessDuration, state.instrument, 0.3, bus);
   });
   render();
 }
 
 function replayAll() {
-  const cadenceEnd = playCadenceSeq();
+  const bus = newPlaybackBus();
+  const cadenceEnd = playCadenceSeq(bus);
   const ctx = audioCtx;
   const t = TEMPO_SETTINGS[state.tempo];
   if (state.mysteryNotes) {
     const noteStart = cadenceEnd + t.pauseBeforeGuess;
     state.mysteryNotes.forEach(n => {
-      playNote(ctx, noteToFreq(NOTE_NAMES[n.pitch], n.octave), noteStart, t.guessDuration, state.instrument, 0.3);
+      playNote(ctx, noteToFreq(NOTE_NAMES[n.pitch], n.octave), noteStart, t.guessDuration, state.instrument, 0.3, bus);
     });
   }
+}
+
+function replayCadenceOnly() {
+  const bus = newPlaybackBus();
+  playCadenceSeq(bus);
+}
+
+function replayMysteryOnly() {
+  const bus = newPlaybackBus();
+  playMysterySeq(null, bus);
 }
 
 function toggleGuess(idx) {
@@ -619,8 +644,8 @@ function render() {
     mainHTML = `
       <div class="playback-row">
         <button class="play-btn" onclick="replayAll()">▶ Replay All</button>
-        <button class="play-btn" onclick="playCadenceSeq()">Cadence Only</button>
-        <button class="play-btn" onclick="playMysterySeq()">${state.polyphony > 1 ? "Notes" : "Note"} Only</button>
+        <button class="play-btn" onclick="replayCadenceOnly()">Cadence Only</button>
+        <button class="play-btn" onclick="replayMysteryOnly()">${state.polyphony > 1 ? "Notes" : "Note"} Only</button>
       </div>
       <div class="guess-area">
         <p class="guess-prompt ${promptClass}">${promptText}</p>
