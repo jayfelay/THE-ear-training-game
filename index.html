@@ -298,7 +298,25 @@ const adaptive = {
   })),
   confusionMatrix: Array.from({length: 12}, () => Array(12).fill(0)),
   previousRoundPitches: [],
+  uncoveredPitches: new Set([0,1,2,3,4,5,6,7,8,9,10,11]),
+  combinationDeck: [],
+  currentPolyphony: 0,
 };
+
+function buildCombinationDeck(n) {
+  const combos = [];
+  if (n === 1) {
+    for (let i = 0; i < 12; i++) combos.push([i]);
+  } else if (n === 2) {
+    for (let i = 0; i < 12; i++)
+      for (let j = i + 1; j < 12; j++) combos.push([i, j]);
+  }
+  return combos;
+}
+
+function comboKey(pitches) {
+  return pitches.slice().sort((a, b) => a - b).join(",");
+}
 
 function computePriority(pitchIdx) {
   const stats = adaptive.pitchStats[pitchIdx];
@@ -316,6 +334,7 @@ function computePriority(pitchIdx) {
   const totalConfusion = row.reduce((a, b) => a + b, 0) + colSum;
   priority += Math.min(totalConfusion * 0.5, 3.0);
   if (stats.consecutiveCorrect >= 3) priority *= 0.5;
+  if (adaptive.uncoveredPitches.has(pitchIdx)) priority += 5.0;
   return Math.max(priority, 0.2);
 }
 
@@ -327,6 +346,15 @@ function selectPitch(excludePitches) {
     adaptive.previousRoundPitches.forEach(p => {
       if (!excludePitches.includes(p)) priorities[p] *= 0.1;
     });
+  }
+  if (state.polyphony === 2 && excludePitches.length === 1 && adaptive.combinationDeck.length > 0) {
+    const first = excludePitches[0];
+    const deckKeys = new Set(adaptive.combinationDeck.map(c => comboKey(c)));
+    for (let i = 0; i < 12; i++) {
+      if (priorities[i] > 0 && deckKeys.has(comboKey([first, i]))) {
+        priorities[i] += 3.0;
+      }
+    }
   }
   const total = priorities.reduce((a, b) => a + b, 0);
   if (total === 0) {
@@ -395,6 +423,11 @@ function previewNote(idx) {
 }
 
 function startRound() {
+  if (state.polyphony !== adaptive.currentPolyphony) {
+    adaptive.currentPolyphony = state.polyphony;
+    adaptive.combinationDeck = state.polyphony <= 2 ? buildCombinationDeck(state.polyphony) : [];
+    adaptive.uncoveredPitches = new Set([0,1,2,3,4,5,6,7,8,9,10,11]);
+  }
   const notes = [];
   const lowOct = state.octaveMode === "single" ? 4 : 2;
   const highOct = state.octaveMode === "single" ? 4 : 6;
@@ -405,6 +438,18 @@ function startRound() {
     notes.push({ pitch, octave });
   }
   adaptive.previousRoundPitches = notes.map(n => n.pitch);
+  notes.forEach(n => adaptive.uncoveredPitches.delete(n.pitch));
+  if (adaptive.uncoveredPitches.size === 0) {
+    adaptive.uncoveredPitches = new Set([0,1,2,3,4,5,6,7,8,9,10,11]);
+  }
+  if (state.polyphony <= 2 && adaptive.combinationDeck.length > 0) {
+    const key = comboKey(notes.map(n => n.pitch));
+    const idx = adaptive.combinationDeck.findIndex(c => comboKey(c) === key);
+    if (idx >= 0) adaptive.combinationDeck.splice(idx, 1);
+    if (adaptive.combinationDeck.length === 0) {
+      adaptive.combinationDeck = buildCombinationDeck(state.polyphony);
+    }
+  }
   notes.sort((a, b) => a.octave * 12 + a.pitch - (b.octave * 12 + b.pitch));
   state.mysteryNotes = notes;
   state.guesses = [];
