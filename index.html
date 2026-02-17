@@ -33,7 +33,8 @@
   .inner.has-notch { padding-top: env(safe-area-inset-top, 20px); padding-bottom: env(safe-area-inset-bottom, 40px); }
 
   /* Header */
-  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+  .header-controls { display: flex; justify-content: space-between; align-items: center; }
   .logo-area { display: flex; align-items: center; gap: 12px; }
   .logo-icon {
     width: 44px; height: 44px; border-radius: 12px;
@@ -45,8 +46,12 @@
   .subtitle { font-size: 11px; color: #8888aa; letter-spacing: 2px; text-transform: uppercase; }
   .settings-btn {
     background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
-    color: #aaa; width: 40px; height: 40px; border-radius: 10px; font-size: 18px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
+    color: #aaa; min-width: 40px; height: 40px; padding: 0 12px; border-radius: 10px; font-size: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: all 0.15s; font-family: inherit;
+  }
+  .settings-btn.active {
+    background: linear-gradient(135deg, #6366f1, #7c3aed); color: #fff;
+    border: 1px solid rgba(99,102,241,0.5); box-shadow: 0 2px 12px rgba(99,102,241,0.25);
   }
 
   /* Settings */
@@ -341,7 +346,7 @@ const state = {
   totalCorrect: 0,
   totalAttempts: 0,
   showSettings: false,
-  showStats: false,
+  showStats: true,
   lastRT: 0,
   history: [],
   mode: "game",
@@ -1096,13 +1101,15 @@ function render() {
         <div class="logo-icon"><img src="EarTrainingGameThumbnail.png" alt="THE Ear Training Game"></div>
         <div><div class="title">THE Ear Training Game</div><div class="subtitle">chromatic pitch recognition</div></div>
       </div>
-      <div style="display:flex;gap:6px;align-items:center">
+      <div class="header-controls">
         <div class="mode-tabs">
           <button class="mode-tab ${state.mode==='game'?'active':''}" onclick="if(state.mode!=='game')exitDroneMode()">Game</button>
-          <button class="mode-tab ${state.mode==='drone'?'active':''}" onclick="if(state.mode!=='drone')enterDroneMode()">Drone</button>
+          <button class="mode-tab ${state.mode==='drone'?'active':''}" onclick="if(state.mode!=='drone')enterDroneMode()">Free Play</button>
         </div>
-        <button class="settings-btn" onclick="state.showStats=!state.showStats;render()" style="font-size:11px;letter-spacing:1px">${state.showStats ? "✕" : "stats"}</button>
-        <button class="settings-btn" onclick="state.showSettings=!state.showSettings;render()">${state.showSettings ? "✕" : "⚙"}</button>
+        ${state.mode === 'game' ? `<div style="display:flex;gap:6px;align-items:center">
+          <button class="settings-btn${state.showStats?' active':''}" onclick="state.showStats=!state.showStats;render()" style="font-size:11px;letter-spacing:1px">stats</button>
+          <button class="settings-btn${state.showSettings?' active':''}" onclick="state.showSettings=!state.showSettings;render()">⚙</button>
+        </div>` : ''}
       </div>
     </header>
     ${state.mode === "game" ? settingsHTML : ""}
