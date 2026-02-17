@@ -14,6 +14,7 @@
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body {
     background: linear-gradient(160deg, #0c0c14 0%, #1a1a2e 40%, #16213e 100%);
+    background-attachment: fixed;
     color: #e0e0e0;
     font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Menlo', monospace;
     min-height: 100vh;
@@ -21,7 +22,7 @@
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
   }
-  html { height: -webkit-fill-available; }
+  html { height: -webkit-fill-available; background-color: #0c0c14; }
 
   .bg-grain {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -29,8 +30,8 @@
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
   }
 
-  .inner { max-width: 520px; margin: 0 auto; padding: 20px 16px 40px; position: relative; z-index: 1; }
-  .inner.has-notch { padding-top: env(safe-area-inset-top, 20px); padding-bottom: env(safe-area-inset-bottom, 40px); }
+  .inner { max-width: 520px; margin: 0 auto; padding: 32px 16px 40px; position: relative; z-index: 1; }
+  .inner.has-notch { padding-top: calc(env(safe-area-inset-top, 20px) + 12px); padding-bottom: env(safe-area-inset-bottom, 40px); }
 
   /* Header */
   .header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
@@ -762,7 +763,6 @@ function toggleDroneOnOff() {
 function enterDroneMode() {
   state.mode = "drone";
   stopPlayback();
-  startDrone();
   render();
 }
 
@@ -1020,13 +1020,13 @@ function render() {
     }).join("");
     mainHTML = `
       <div class="drone-controls">
-        <div class="drone-label">Drone: ${droneNote}</div>
+        <div class="drone-label">Note: ${droneNote}</div>
         <div class="drone-toggle-row">
           <button class="toggle-btn ${!droneOsc?'active':''}" onclick="toggleDroneOnOff()" style="${!droneOsc?'background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.2);color:#aaa':''}">Off</button>
           <button class="toggle-btn ${droneOsc&&state.droneOctave==='low'?'active':''}" onclick="setDroneOctave('low')">Low C (C3)</button>
           <button class="toggle-btn ${droneOsc&&state.droneOctave==='high'?'active':''}" onclick="setDroneOctave('high')">High C (C5)</button>
         </div>
-        <div class="drone-hint">Tap notes to sustain against the drone · tap again to release</div>
+        <div class="drone-hint">Tap notes to hear and sustain them · tap again to release</div>
       </div>
       <div class="note-grid">${droneButtons}</div>`;
   } else if (!state.gameActive) {
