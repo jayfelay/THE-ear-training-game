@@ -544,8 +544,8 @@ function startRound() {
     adaptive.uncoveredPitches = new Set([0,1,2,3,4,5,6,7,8,9,10,11]);
   }
   const notes = [];
-  const lowOct = state.octaveMode === "single" ? 4 : 2;
-  const highOct = state.octaveMode === "single" ? 4 : 6;
+  const lowOct = state.octaveMode === "single" ? 4 : 3;
+  const highOct = state.octaveMode === "single" ? 4 : 5;
   for (let i = 0; i < state.polyphony; i++) {
     const usedPitches = notes.map(n => n.pitch);
     const pitch = selectPitch(usedPitches);
@@ -967,7 +967,7 @@ function render() {
           <button class="toggle-btn ${state.octaveMode==='single'?'active':''}" onclick="setSetting('octaveMode','single')">One Octave</button>
           <button class="toggle-btn ${state.octaveMode==='multiple'?'active':''}" onclick="setSetting('octaveMode','multiple')">Multiple Octaves</button>
         </div>
-        <div class="octave-helper">${state.octaveMode==="single" ? "Notes around middle C (C4)" : "C2 – C6 · two octaves above &amp; below middle C"}</div>
+        <div class="octave-helper">${state.octaveMode==="single" ? "Notes around middle C (C4)" : "C3 – C5 · one octave above &amp; below middle C"}</div>
       </div>
       <div class="setting-group">
         <button class="toggle-btn" onclick="resetProgress()" style="color:#f87171;border-color:rgba(248,113,113,0.3)">Reset All Progress</button>
