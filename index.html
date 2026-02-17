@@ -797,7 +797,8 @@ function render() {
       const rtText = avgRT >= 0 ? `${(avgRT / 1000).toFixed(1)}s` : "";
       return `<div class="pitch-stat-cell" style="background:${bgColor};color:${textColor}">
         <span class="pitch-stat-name">${display}</span>
-        <span class="pitch-stat-acc">${accText}${rtText ? ` \u00b7 ${rtText}` : ""}</span>
+        <span class="pitch-stat-acc">${accText}</span>
+        ${rtText ? `<span class="pitch-stat-acc" style="font-size:10px;opacity:0.7">${rtText}</span>` : ""}
       </div>`;
     }).join("");
     pitchStatsHTML = `<div class="pitch-stats-panel">
