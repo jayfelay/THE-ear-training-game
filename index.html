@@ -729,6 +729,27 @@ function setDroneOctave(oct) {
     }, 100);
   } else {
     state.droneOctave = oct;
+    startDrone();
+    render();
+  }
+}
+
+function toggleDroneOnOff() {
+  if (droneOsc) {
+    const ctx = audioCtx;
+    const now = ctx ? ctx.currentTime : 0;
+    if (droneGain) {
+      droneGain.gain.setValueAtTime(droneGain.gain.value, now);
+      droneGain.gain.linearRampToValueAtTime(0, now + 0.1);
+    }
+    setTimeout(() => {
+      if (droneOsc) droneOsc.forEach(o => { try { o.stop(); } catch(e) {} });
+      droneOsc = null;
+      if (droneGain) { droneGain.disconnect(); droneGain = null; }
+      render();
+    }, 120);
+  } else {
+    startDrone();
     render();
   }
 }
@@ -983,7 +1004,7 @@ function render() {
 
   let mainHTML = "";
   if (state.mode === "drone") {
-    const droneNote = state.droneOctave === "low" ? "C3" : "C5";
+    const droneNote = !droneOsc ? "Off" : (state.droneOctave === "low" ? "C3" : "C5");
     const droneButtons = NOTE_NAMES.map((_, idx) => {
       const active = state.droneActiveNotes.includes(idx);
       const cls = active ? "sustained" : "";
@@ -996,8 +1017,9 @@ function render() {
       <div class="drone-controls">
         <div class="drone-label">Drone: ${droneNote}</div>
         <div class="drone-toggle-row">
-          <button class="toggle-btn ${state.droneOctave==='low'?'active':''}" onclick="setDroneOctave('low')">Low C (C3)</button>
-          <button class="toggle-btn ${state.droneOctave==='high'?'active':''}" onclick="setDroneOctave('high')">High C (C5)</button>
+          <button class="toggle-btn ${!droneOsc?'active':''}" onclick="toggleDroneOnOff()" style="${!droneOsc?'background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.2);color:#aaa':''}">Off</button>
+          <button class="toggle-btn ${droneOsc&&state.droneOctave==='low'?'active':''}" onclick="setDroneOctave('low')">Low C (C3)</button>
+          <button class="toggle-btn ${droneOsc&&state.droneOctave==='high'?'active':''}" onclick="setDroneOctave('high')">High C (C5)</button>
         </div>
         <div class="drone-hint">Tap notes to sustain against the drone · tap again to release</div>
       </div>
