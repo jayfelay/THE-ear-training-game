@@ -72,7 +72,7 @@
 
   /* Stats */
   .stats-row {
-    display: flex; justify-content: center; gap: 32px; margin-bottom: 24px; padding: 14px 0;
+    display: flex; justify-content: center; gap: 24px; margin-bottom: 24px; padding: 14px 0;
     border-top: 1px solid rgba(255,255,255,0.06); border-bottom: 1px solid rgba(255,255,255,0.06);
   }
   .stat { display: flex; flex-direction: column; align-items: center; gap: 2px; }
@@ -155,6 +155,7 @@
   }
   .answer-label { color: #8888aa; font-weight: 400; font-size: 12px; }
   .answer-degree { color: #6366f1; font-size: 13px; }
+  .answer-rt { color: #6366f1; font-size: 13px; margin-left: 8px; opacity: 0.8; }
 
   /* History */
   .history-section { margin-top: 8px; }
@@ -168,6 +169,21 @@
   .history-answer { color: #aaa; }
   .history-correct { color: #4ade80; font-weight: 700; }
   .history-wrong { color: #f87171; font-weight: 700; }
+
+  /* Pitch stats */
+  .pitch-stats-panel {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px; padding: 18px; margin-bottom: 20px;
+  }
+  .pitch-stat-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px;
+  }
+  .pitch-stat-cell {
+    padding: 10px 6px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);
+    text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  }
+  .pitch-stat-name { font-weight: 600; font-size: 13px; }
+  .pitch-stat-acc { font-size: 11px; opacity: 0.8; }
 </style>
 </head>
 <body>
@@ -302,6 +318,8 @@ const state = {
   totalCorrect: 0,
   totalAttempts: 0,
   showSettings: false,
+  showStats: false,
+  lastRT: 0,
   history: [],
 };
 
@@ -421,7 +439,7 @@ function selectPitch(excludePitches) {
 
 function updateAdaptiveStats() {
   adaptive.trialNumber++;
-  const rt = adaptive.roundStartTime > 0 ? performance.now() - adaptive.roundStartTime : 0;
+  const rt = state.lastRT;
   const mysteryPitches = state.mysteryNotes.map(n => n.pitch);
   const guessedPitches = [...new Set(state.guesses)];
   mysteryPitches.forEach(pitch => {
@@ -515,6 +533,7 @@ function startRound() {
   state.guesses = [];
   state.revealed = false;
   state.gameActive = true;
+  state.lastRT = 0;
 
   const bus = newPlaybackBus();
   const cadenceEnd = playCadenceSeq(bus);
@@ -571,9 +590,11 @@ function handleReveal() {
   state.totalAttempts++;
   if (correct) { state.streak++; state.bestStreak = Math.max(state.bestStreak, state.streak); state.totalCorrect++; }
   else state.streak = 0;
+  state.lastRT = adaptive.roundStartTime > 0 ? performance.now() - adaptive.roundStartTime : 0;
   state.history.unshift({ mystery: state.mysteryNotes.slice(), guess: state.guesses.slice(), correct });
   if (state.history.length > 20) state.history.length = 20;
   updateAdaptiveStats();
+  saveProgress();
   render();
 }
 
@@ -601,7 +622,99 @@ function requiredGuesses() {
 }
 
 // ─── Settings Helpers ───
-function setSetting(key, val) { state[key] = val; render(); }
+function setSetting(key, val) { state[key] = val; saveProgress(); render(); }
+
+// ─── Persistence ───
+function saveProgress() {
+  try {
+    const data = {
+      version: 1,
+      lastSavedAt: Date.now(),
+      state: {
+        instrument: state.instrument, cadenceType: state.cadenceType,
+        polyphony: state.polyphony, octaveMode: state.octaveMode, tempo: state.tempo,
+        streak: state.streak, bestStreak: state.bestStreak,
+        totalCorrect: state.totalCorrect, totalAttempts: state.totalAttempts,
+        history: state.history,
+      },
+      adaptive: {
+        trialNumber: adaptive.trialNumber,
+        pitchStats: adaptive.pitchStats,
+        confusionMatrix: adaptive.confusionMatrix,
+        uncoveredPitches: [...adaptive.uncoveredPitches],
+      },
+    };
+    localStorage.setItem("ear-training-progress", JSON.stringify(data));
+  } catch (e) { /* quota or private browsing — silently ignore */ }
+}
+
+function loadProgress() {
+  try {
+    const raw = localStorage.getItem("ear-training-progress");
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!data || data.version !== 1) return;
+    // Restore state
+    const s = data.state;
+    if (s) {
+      if (s.instrument && INSTRUMENTS[s.instrument]) state.instrument = s.instrument;
+      if (s.cadenceType && CADENCE_PATTERNS[s.cadenceType]) state.cadenceType = s.cadenceType;
+      if (typeof s.polyphony === "number" && s.polyphony >= 1 && s.polyphony <= 8) state.polyphony = s.polyphony;
+      if (s.octaveMode === "single" || s.octaveMode === "multiple") state.octaveMode = s.octaveMode;
+      if (s.tempo && TEMPO_SETTINGS[s.tempo]) state.tempo = s.tempo;
+      if (typeof s.streak === "number") state.streak = s.streak;
+      if (typeof s.bestStreak === "number") state.bestStreak = s.bestStreak;
+      if (typeof s.totalCorrect === "number") state.totalCorrect = s.totalCorrect;
+      if (typeof s.totalAttempts === "number") state.totalAttempts = s.totalAttempts;
+      if (Array.isArray(s.history)) state.history = s.history.slice(0, 20);
+    }
+    // Restore adaptive
+    const a = data.adaptive;
+    if (a) {
+      if (typeof a.trialNumber === "number") adaptive.trialNumber = a.trialNumber;
+      if (Array.isArray(a.pitchStats) && a.pitchStats.length === 12) {
+        a.pitchStats.forEach((ps, i) => {
+          if (ps && typeof ps === "object") {
+            adaptive.pitchStats[i].presentations = ps.presentations || 0;
+            adaptive.pitchStats[i].correct = ps.correct || 0;
+            adaptive.pitchStats[i].lastSeenTrial = ps.lastSeenTrial ?? -100;
+            adaptive.pitchStats[i].consecutiveCorrect = ps.consecutiveCorrect || 0;
+            adaptive.pitchStats[i].recentResults = Array.isArray(ps.recentResults) ? ps.recentResults.slice(0, 6) : [];
+            adaptive.pitchStats[i].lastRT = ps.lastRT || 0;
+          }
+        });
+      }
+      if (Array.isArray(a.confusionMatrix) && a.confusionMatrix.length === 12) {
+        a.confusionMatrix.forEach((row, i) => {
+          if (Array.isArray(row) && row.length === 12) adaptive.confusionMatrix[i] = row;
+        });
+      }
+      if (Array.isArray(a.uncoveredPitches)) {
+        adaptive.uncoveredPitches = new Set(a.uncoveredPitches.filter(n => typeof n === "number" && n >= 0 && n < 12));
+      }
+    }
+  } catch (e) { /* corrupt data — silently use defaults */ }
+}
+
+function resetProgress() {
+  if (!confirm("Reset all progress? This cannot be undone.")) return;
+  localStorage.removeItem("ear-training-progress");
+  state.instrument = "synth"; state.cadenceType = "I-IV-V-I"; state.polyphony = 1;
+  state.octaveMode = "single"; state.tempo = "medium"; state.streak = 0;
+  state.bestStreak = 0; state.totalCorrect = 0; state.totalAttempts = 0;
+  state.history = []; state.gameActive = false; state.mysteryNotes = null;
+  state.guesses = []; state.revealed = false; state.lastRT = 0;
+  adaptive.trialNumber = 0; adaptive.roundStartTime = 0;
+  adaptive.pitchStats = Array.from({length: 12}, () => ({
+    presentations: 0, correct: 0, lastSeenTrial: -100,
+    consecutiveCorrect: 0, recentResults: [], lastRT: 0,
+  }));
+  adaptive.confusionMatrix = Array.from({length: 12}, () => Array(12).fill(0));
+  adaptive.previousRoundPitches = [];
+  adaptive.uncoveredPitches = new Set([0,1,2,3,4,5,6,7,8,9,10,11]);
+  adaptive.combinationDeck = []; adaptive.currentPolyphony = 0;
+  render();
+}
 
 // ─── Render ───
 function render() {
@@ -651,6 +764,36 @@ function render() {
         </div>
         <div class="octave-helper">${state.octaveMode==="single" ? "Notes around middle C (C4)" : "C2 – C6 · two octaves above &amp; below middle C"}</div>
       </div>
+      <div class="setting-group">
+        <button class="toggle-btn" onclick="resetProgress()" style="color:#f87171;border-color:rgba(248,113,113,0.3)">Reset All Progress</button>
+      </div>
+    </div>`;
+  }
+
+  let pitchStatsHTML = "";
+  if (state.showStats) {
+    const cells = NOTE_NAMES.map((_, idx) => {
+      const stats = adaptive.pitchStats[idx];
+      const recent = stats.recentResults;
+      const recentAcc = recent.length > 0 ? recent.reduce((a, b) => a + b, 0) / recent.length : -1;
+      const display = getNoteDisplay(idx);
+      let bgColor, textColor;
+      if (recentAcc < 0) {
+        bgColor = "rgba(255,255,255,0.03)"; textColor = "#555";
+      } else {
+        const hue = Math.round(recentAcc * 130);
+        bgColor = `hsla(${hue}, 60%, 40%, 0.15)`;
+        textColor = `hsl(${hue}, 70%, 65%)`;
+      }
+      const accText = recentAcc >= 0 ? `${Math.round(recentAcc * 100)}%` : "\u2014";
+      return `<div class="pitch-stat-cell" style="background:${bgColor};color:${textColor}">
+        <span class="pitch-stat-name">${display}</span>
+        <span class="pitch-stat-acc">${accText}</span>
+      </div>`;
+    }).join("");
+    pitchStatsHTML = `<div class="pitch-stats-panel">
+      <div class="setting-label">Pitch Accuracy <span style="font-size:9px;opacity:0.6">(last 6 attempts)</span></div>
+      <div class="pitch-stat-grid">${cells}</div>
     </div>`;
   }
 
@@ -688,7 +831,8 @@ function render() {
     if (state.revealed && state.mysteryNotes) {
       const names = state.mysteryNotes.map(n => getNoteDisplay(n.pitch) + n.octave).join(", ");
       const degrees = state.mysteryNotes.map(n => DEGREE_LABELS[n.pitch]).join(", ");
-      answerHTML = `<div class="answer-box"><span class="answer-label">Answer:</span> ${names} <span class="answer-degree">(${degrees})</span></div>`;
+      const rtDisplay = state.lastRT > 0 ? `<span class="answer-rt">${(state.lastRT / 1000).toFixed(1)}s</span>` : "";
+      answerHTML = `<div class="answer-box"><span class="answer-label">Answer:</span> ${names} <span class="answer-degree">(${degrees})</span>${rtDisplay}</div>`;
     }
 
     mainHTML = `
@@ -726,19 +870,25 @@ function render() {
         <div class="logo-icon"><img src="EarTrainingGameThumbnail.png" alt="THE Ear Training Game"></div>
         <div><div class="title">THE Ear Training Game</div><div class="subtitle">chromatic pitch recognition</div></div>
       </div>
-      <button class="settings-btn" onclick="state.showSettings=!state.showSettings;render()">${state.showSettings ? "✕" : "⚙"}</button>
+      <div style="display:flex;gap:6px">
+        <button class="settings-btn" onclick="state.showStats=!state.showStats;render()" style="font-size:11px;letter-spacing:1px">${state.showStats ? "✕" : "stats"}</button>
+        <button class="settings-btn" onclick="state.showSettings=!state.showSettings;render()">${state.showSettings ? "✕" : "⚙"}</button>
+      </div>
     </header>
     ${settingsHTML}
+    ${pitchStatsHTML}
     <div class="stats-row">
       <div class="stat"><span class="stat-num">${state.streak}</span><span class="stat-label">streak</span></div>
       <div class="stat"><span class="stat-num">${state.bestStreak}</span><span class="stat-label">best</span></div>
       <div class="stat"><span class="stat-num">${acc}%</span><span class="stat-label">accuracy</span></div>
+      <div class="stat"><span class="stat-num">${adaptive.trialNumber}</span><span class="stat-label">rounds</span></div>
     </div>
     <div class="main-area">${mainHTML}</div>
     ${historyHTML}`;
 }
 
 // Init
+loadProgress();
 render();
 </script>
 </body>
