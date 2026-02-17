@@ -184,6 +184,29 @@
   }
   .pitch-stat-name { font-weight: 600; font-size: 13px; }
   .pitch-stat-acc { font-size: 11px; opacity: 0.8; }
+
+  /* Mode tabs */
+  .mode-tabs { display: flex; gap: 4px; }
+  .mode-tab {
+    padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04); color: #777; font-size: 11px; cursor: pointer;
+    font-family: inherit; letter-spacing: 1px; text-transform: uppercase; transition: all 0.15s;
+  }
+  .mode-tab.active {
+    background: linear-gradient(135deg, #6366f1, #7c3aed); color: #fff;
+    border-color: rgba(99,102,241,0.5);
+  }
+
+  /* Drone mode */
+  .drone-controls { text-align: center; margin-bottom: 20px; }
+  .drone-label { font-size: 11px; color: #8888aa; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 10px; }
+  .drone-toggle-row { display: flex; gap: 6px; justify-content: center; margin-bottom: 8px; }
+  .drone-hint { font-size: 11px; color: #555; margin-top: 6px; }
+  .note-btn.sustained {
+    background: linear-gradient(135deg, rgba(99,102,241,0.35), rgba(124,58,237,0.35));
+    border: 1px solid rgba(99,102,241,0.7); color: #fff;
+    box-shadow: 0 0 16px rgba(99,102,241,0.25);
+  }
 </style>
 </head>
 <body>
@@ -321,6 +344,9 @@ const state = {
   showStats: false,
   lastRT: 0,
   history: [],
+  mode: "game",
+  droneOctave: "low",
+  droneActiveNotes: [],
 };
 
 // ─── Adaptive Learning (ARTS-inspired) ───
@@ -577,6 +603,150 @@ function replayMysteryOnly() {
   playMysterySeq(null, bus);
 }
 
+// ─── Drone Mode Audio ───
+let droneOsc = null;
+let droneGain = null;
+let droneNoteOscs = {}; // pitchIdx → {oscs[], gain}
+
+function startDrone() {
+  const ctx = ensureCtx();
+  stopDrone();
+  const oct = state.droneOctave === "low" ? 3 : 5;
+  const freq = noteToFreq("C", oct);
+  droneGain = ctx.createGain();
+  droneGain.gain.value = 0;
+  droneGain.connect(ctx.destination);
+
+  const osc = ctx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.value = freq;
+  osc.connect(droneGain);
+  osc.start();
+
+  // subtle second oscillator for warmth
+  const osc2 = ctx.createOscillator();
+  osc2.type = "triangle";
+  osc2.frequency.value = freq * 1.001;
+  const g2 = ctx.createGain();
+  g2.gain.value = 0.15;
+  osc2.connect(g2);
+  g2.connect(droneGain);
+  osc2.start();
+
+  droneOsc = [osc, osc2];
+  // fade in
+  droneGain.gain.setValueAtTime(0, ctx.currentTime);
+  droneGain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.3);
+}
+
+function stopDrone() {
+  if (droneOsc) {
+    const ctx = audioCtx;
+    const now = ctx ? ctx.currentTime : 0;
+    if (droneGain) {
+      droneGain.gain.setValueAtTime(droneGain.gain.value, now);
+      droneGain.gain.linearRampToValueAtTime(0, now + 0.1);
+    }
+    setTimeout(() => {
+      droneOsc.forEach(o => { try { o.stop(); } catch(e) {} });
+      droneOsc = null;
+      if (droneGain) { droneGain.disconnect(); droneGain = null; }
+    }, 150);
+  }
+  // stop all sustained notes too
+  Object.keys(droneNoteOscs).forEach(k => stopDroneNote(parseInt(k)));
+}
+
+function startDroneNote(pitchIdx) {
+  const ctx = ensureCtx();
+  const freq = noteToFreq(NOTE_NAMES[pitchIdx], 4);
+  const gain = ctx.createGain();
+  gain.gain.value = 0;
+  gain.connect(ctx.destination);
+
+  const osc = ctx.createOscillator();
+  osc.type = "triangle";
+  osc.frequency.value = freq;
+  osc.connect(gain);
+  osc.start();
+
+  const osc2 = ctx.createOscillator();
+  osc2.type = "sine";
+  osc2.frequency.value = freq * 2;
+  const g2 = ctx.createGain();
+  g2.gain.value = 0.1;
+  osc2.connect(g2);
+  g2.connect(gain);
+  osc2.start();
+
+  droneNoteOscs[pitchIdx] = { oscs: [osc, osc2], gain };
+  gain.gain.setValueAtTime(0, ctx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.22, ctx.currentTime + 0.08);
+}
+
+function stopDroneNote(pitchIdx) {
+  const entry = droneNoteOscs[pitchIdx];
+  if (!entry) return;
+  const ctx = audioCtx;
+  const now = ctx ? ctx.currentTime : 0;
+  entry.gain.gain.setValueAtTime(entry.gain.gain.value, now);
+  entry.gain.gain.linearRampToValueAtTime(0, now + 0.12);
+  setTimeout(() => {
+    entry.oscs.forEach(o => { try { o.stop(); } catch(e) {} });
+    entry.gain.disconnect();
+  }, 150);
+  delete droneNoteOscs[pitchIdx];
+}
+
+function toggleDroneNote(pitchIdx) {
+  const idx = state.droneActiveNotes.indexOf(pitchIdx);
+  if (idx >= 0) {
+    stopDroneNote(pitchIdx);
+    state.droneActiveNotes.splice(idx, 1);
+  } else {
+    startDroneNote(pitchIdx);
+    state.droneActiveNotes.push(pitchIdx);
+  }
+  render();
+}
+
+function setDroneOctave(oct) {
+  // only restart the drone itself, leave sustained notes untouched
+  if (droneOsc) {
+    const ctx = audioCtx;
+    const now = ctx ? ctx.currentTime : 0;
+    if (droneGain) {
+      droneGain.gain.setValueAtTime(droneGain.gain.value, now);
+      droneGain.gain.linearRampToValueAtTime(0, now + 0.08);
+    }
+    setTimeout(() => {
+      if (droneOsc) droneOsc.forEach(o => { try { o.stop(); } catch(e) {} });
+      droneOsc = null;
+      if (droneGain) { droneGain.disconnect(); droneGain = null; }
+      state.droneOctave = oct;
+      startDrone();
+      render();
+    }, 100);
+  } else {
+    state.droneOctave = oct;
+    render();
+  }
+}
+
+function enterDroneMode() {
+  state.mode = "drone";
+  stopPlayback();
+  startDrone();
+  render();
+}
+
+function exitDroneMode() {
+  state.mode = "game";
+  stopDrone();
+  state.droneActiveNotes = [];
+  render();
+}
+
 function toggleGuess(idx) {
   if (state.revealed) return;
   const i = state.guesses.indexOf(idx);
@@ -638,6 +808,7 @@ function saveProgress() {
       state: {
         instrument: state.instrument, cadenceType: state.cadenceType,
         polyphony: state.polyphony, octaveMode: state.octaveMode, tempo: state.tempo,
+        droneOctave: state.droneOctave,
         streak: state.streak, bestStreak: state.bestStreak,
         totalCorrect: state.totalCorrect, totalAttempts: state.totalAttempts,
         history: state.history,
@@ -667,6 +838,7 @@ function loadProgress() {
       if (typeof s.polyphony === "number" && s.polyphony >= 1 && s.polyphony <= 8) state.polyphony = s.polyphony;
       if (s.octaveMode === "single" || s.octaveMode === "multiple") state.octaveMode = s.octaveMode;
       if (s.tempo && TEMPO_SETTINGS[s.tempo]) state.tempo = s.tempo;
+      if (s.droneOctave === "low" || s.droneOctave === "high") state.droneOctave = s.droneOctave;
       if (typeof s.streak === "number") state.streak = s.streak;
       if (typeof s.bestStreak === "number") state.bestStreak = s.bestStreak;
       if (typeof s.totalCorrect === "number") state.totalCorrect = s.totalCorrect;
@@ -709,6 +881,8 @@ function resetProgress() {
   state.bestStreak = 0; state.totalCorrect = 0; state.totalAttempts = 0;
   state.history = []; state.gameActive = false; state.mysteryNotes = null;
   state.guesses = []; state.revealed = false; state.lastRT = 0;
+  if (state.mode === "drone") { stopDrone(); state.mode = "game"; }
+  state.droneOctave = "low"; state.droneActiveNotes = [];
   adaptive.trialNumber = 0; adaptive.roundStartTime = 0;
   adaptive.pitchStats = Array.from({length: 12}, () => ({
     presentations: 0, correct: 0, lastSeenTrial: -100,
@@ -808,7 +982,27 @@ function render() {
   }
 
   let mainHTML = "";
-  if (!state.gameActive) {
+  if (state.mode === "drone") {
+    const droneNote = state.droneOctave === "low" ? "C3" : "C5";
+    const droneButtons = NOTE_NAMES.map((_, idx) => {
+      const active = state.droneActiveNotes.includes(idx);
+      const cls = active ? "sustained" : "";
+      return `<button class="note-btn ${cls}" onclick="toggleDroneNote(${idx})">
+        <span class="note-name">${getNoteDisplay(idx)}</span>
+        <span class="note-degree">${DEGREE_LABELS[idx]} ${SOLFEGE[idx]}</span>
+      </button>`;
+    }).join("");
+    mainHTML = `
+      <div class="drone-controls">
+        <div class="drone-label">Drone: ${droneNote}</div>
+        <div class="drone-toggle-row">
+          <button class="toggle-btn ${state.droneOctave==='low'?'active':''}" onclick="setDroneOctave('low')">Low C (C3)</button>
+          <button class="toggle-btn ${state.droneOctave==='high'?'active':''}" onclick="setDroneOctave('high')">High C (C5)</button>
+        </div>
+        <div class="drone-hint">Tap notes to sustain against the drone · tap again to release</div>
+      </div>
+      <div class="note-grid">${droneButtons}</div>`;
+  } else if (!state.gameActive) {
     mainHTML = `<div class="start-area">
       <p class="instructions">Listen to the cadence to establish the key, then identify the mystery ${state.polyphony > 1 ? "notes" : "note"}.</p>
       <button class="big-btn" onclick="startRound()">Start Round</button>
@@ -880,21 +1074,25 @@ function render() {
         <div class="logo-icon"><img src="EarTrainingGameThumbnail.png" alt="THE Ear Training Game"></div>
         <div><div class="title">THE Ear Training Game</div><div class="subtitle">chromatic pitch recognition</div></div>
       </div>
-      <div style="display:flex;gap:6px">
+      <div style="display:flex;gap:6px;align-items:center">
+        <div class="mode-tabs">
+          <button class="mode-tab ${state.mode==='game'?'active':''}" onclick="if(state.mode!=='game')exitDroneMode()">Game</button>
+          <button class="mode-tab ${state.mode==='drone'?'active':''}" onclick="if(state.mode!=='drone')enterDroneMode()">Drone</button>
+        </div>
         <button class="settings-btn" onclick="state.showStats=!state.showStats;render()" style="font-size:11px;letter-spacing:1px">${state.showStats ? "✕" : "stats"}</button>
         <button class="settings-btn" onclick="state.showSettings=!state.showSettings;render()">${state.showSettings ? "✕" : "⚙"}</button>
       </div>
     </header>
-    ${settingsHTML}
-    ${pitchStatsHTML}
-    <div class="stats-row">
+    ${state.mode === "game" ? settingsHTML : ""}
+    ${state.mode === "game" ? pitchStatsHTML : ""}
+    ${state.mode === "game" ? `<div class="stats-row">
       <div class="stat"><span class="stat-num">${state.streak}</span><span class="stat-label">streak</span></div>
       <div class="stat"><span class="stat-num">${state.bestStreak}</span><span class="stat-label">best</span></div>
       <div class="stat"><span class="stat-num">${acc}%</span><span class="stat-label">accuracy</span></div>
       <div class="stat"><span class="stat-num">${adaptive.trialNumber}</span><span class="stat-label">rounds</span></div>
-    </div>
+    </div>` : ""}
     <div class="main-area">${mainHTML}</div>
-    ${historyHTML}`;
+    ${state.mode === "game" ? historyHTML : ""}`;
 }
 
 // Init
