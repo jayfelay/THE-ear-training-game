@@ -1195,7 +1195,7 @@ function render() {
         if (total > maxConf) { maxConf = total; maxConfPitch = j; }
       }
       if (maxConf > 0.3 && maxConfPitch >= 0) {
-        const ivLabel = intervalName(((maxConfPitch - idx) + 12) % 12);
+        const ivLabel = intervalName(semitoneDist(idx, maxConfPitch));
         confText = `<span class="pitch-stat-acc" style="font-size:9px;opacity:0.5">\u2192 ${NOTE_NAMES[maxConfPitch]} (${ivLabel})</span>`;
       }
       return `<div class="pitch-stat-cell" style="background:${bgColor};color:${textColor}">
