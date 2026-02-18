@@ -214,27 +214,6 @@
     box-shadow: 0 0 16px rgba(99,102,241,0.25);
   }
 
-  /* Error patterns panel */
-  .error-patterns-panel {
-    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 14px; padding: 18px; margin-bottom: 20px;
-  }
-  .error-type-row {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
-    font-size: 12px;
-  }
-  .error-type-label { color: #8888aa; }
-  .error-type-count { color: #e0e0e0; font-weight: 600; }
-  .interval-stat-grid {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px;
-  }
-  .interval-stat-cell {
-    padding: 8px 4px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);
-    text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px;
-  }
-  .interval-stat-name { font-weight: 600; font-size: 12px; }
-  .interval-stat-acc { font-size: 10px; opacity: 0.8; }
 </style>
 </head>
 <body>
@@ -376,7 +355,6 @@ const state = {
   mode: "game",
   droneOctave: "low",
   droneActiveNotes: [],
-  showErrorPatterns: false,
 };
 
 // ─── Adaptive Learning (ARTS-inspired) ───
@@ -530,7 +508,7 @@ function computePriority(pitchIdx) {
   }
   if (totalConfusion > 0.5) {
     const neighborRatio = neighborConf / (neighborConf + otherConf + 0.001);
-    if (neighborRatio > 0.4) priority += Math.min(neighborConf * 0.4, 2.0);
+    if (neighborRatio > 0.3) priority += Math.min(neighborConf * 0.4, 2.0);
   }
   // Mastery dampening: requires consecutive correct AND fast responses (fluency)
   const isFluent = stats.consecutiveCorrect >= 3 && medianRT > 0 && medianRT < 5000;
@@ -542,10 +520,10 @@ function computePriority(pitchIdx) {
 function selectPitch(excludePitches) {
   const priorities = Array.from({length: 12}, (_, i) => computePriority(i));
   excludePitches.forEach(p => { priorities[p] = 0; });
-  // Enforced minimum delay (ARTS D parameter): pitches seen within last 2 trials
-  // cannot reappear — prevents working-memory-based false learning
+  // Enforced minimum delay (ARTS D parameter): pitches seen within last 3 trials
+  // cannot reappear — prevents working-memory-based false fluency (Kellman recommends D=3-5)
   // Only applied when enough pitches remain (avoids starvation at high polyphony)
-  const minDelay = 2;
+  const minDelay = 3;
   const delayBlocked = [];
   for (let i = 0; i < 12; i++) {
     const seen = adaptive.pitchStats[i].lastSeenTrial;
@@ -572,18 +550,21 @@ function selectPitch(excludePitches) {
     }
   }
   // Interval-difficulty-aware selection: bias toward weak intervals in polyphonic mode
+  // Total interval boost per candidate is capped at 3.0 to prevent domination at high polyphony
   if (excludePitches.length >= 1 && state.polyphony >= 2) {
     for (let i = 0; i < 12; i++) {
       if (priorities[i] <= 0) continue;
+      let ivBoost = 0;
       for (const first of excludePitches) {
         const sorted = [first, i].sort((a, b) => a - b);
         const iv = (sorted[1] - sorted[0] + 12) % 12;
         const ivStats = adaptive.intervalStats[iv];
         if (ivStats.presentations >= 3) {
           const acc = ivStats.bothCorrect / ivStats.presentations;
-          priorities[i] += Math.max(0, (1 - acc) * 2.5);
+          ivBoost += Math.max(0, (1 - acc) * 2.5);
         }
       }
+      priorities[i] += Math.min(ivBoost, 3.0);
     }
   }
   const total = priorities.reduce((a, b) => a + b, 0);
@@ -1183,84 +1164,15 @@ function render() {
         ? stats.recentRTs.reduce((a, b) => a + b, 0) / stats.recentRTs.length
         : -1;
       const rtText = avgRT >= 0 ? `${(avgRT / 1000).toFixed(1)}s` : "";
-      // Top confusion pair
-      let confText = "";
-      const confRow = adaptive.confusionMatrix[idx];
-      let maxConf = 0, maxConfPitch = -1;
-      for (let j = 0; j < 12; j++) {
-        if (j === idx) continue;
-        const asTarget = confRow[j];
-        const asGuess = adaptive.confusionMatrix[j][idx];
-        const total = asTarget + asGuess;
-        if (total > maxConf) { maxConf = total; maxConfPitch = j; }
-      }
-      if (maxConf > 0.3 && maxConfPitch >= 0) {
-        const anchor = nearestAnchor(maxConfPitch);
-        const anchorLabel = anchor >= 0 ? DEGREE_LABELS[anchor] : "";
-        const hint = anchorLabel ? ` (near ${anchorLabel})` : "";
-        confText = `<span class="pitch-stat-acc" style="font-size:9px;opacity:0.5">\u2192 ${NOTE_NAMES[maxConfPitch]}${hint}</span>`;
-      }
       return `<div class="pitch-stat-cell" style="background:${bgColor};color:${textColor}">
         <span class="pitch-stat-name">${display}</span>
         <span class="pitch-stat-acc">${accText}</span>
         ${rtText ? `<span class="pitch-stat-acc" style="font-size:10px;opacity:0.7">${rtText}</span>` : ""}
-        ${confText}
       </div>`;
     }).join("");
     pitchStatsHTML = `<div class="pitch-stats-panel">
       <div class="setting-label">Pitch Stats <span style="font-size:9px;opacity:0.6">(last 6 attempts)</span></div>
       <div class="pitch-stat-grid">${cells}</div>
-    </div>`;
-  }
-
-  let errorPatternsHTML = "";
-  if (state.showErrorPatterns && adaptive.errorTypeCounters.total > 0) {
-    const ec = adaptive.errorTypeCounters;
-    const pct = (n) => ec.total > 0 ? Math.round(n / ec.total * 100) : 0;
-    let errorTypesHTML = `
-      <div class="error-type-row">
-        <span class="error-type-label">Neighbor (1-2 semitones)</span>
-        <span class="error-type-count">${ec.neighbor} (${pct(ec.neighbor)}%)</span>
-      </div>
-      <div class="error-type-row">
-        <span class="error-type-label">Consonance confusion</span>
-        <span class="error-type-count">${ec.consonanceRelative} (${pct(ec.consonanceRelative)}%)</span>
-      </div>
-      <div class="error-type-row">
-        <span class="error-type-label">Same-region</span>
-        <span class="error-type-count">${ec.distant} (${pct(ec.distant)}%)</span>
-      </div>`;
-    if (state.polyphony >= 2) {
-      errorTypesHTML += `
-        <div class="error-type-row">
-          <span class="error-type-label">Interval preserved</span>
-          <span class="error-type-count">${ec.intervalPreserved}</span>
-        </div>`;
-    }
-    let intervalTableHTML = "";
-    if (state.polyphony >= 2) {
-      const ivCells = INTERVAL_NAMES.slice(1).map((name, rawIdx) => {
-        const idx = rawIdx + 1;
-        const is = adaptive.intervalStats[idx];
-        if (is.presentations === 0) return "";
-        const acc = Math.round(is.bothCorrect / is.presentations * 100);
-        const hue = Math.round(acc * 1.3);
-        return `<div class="interval-stat-cell" style="background:hsla(${hue},60%,40%,0.15);color:hsl(${hue},70%,65%)">
-          <span class="interval-stat-name">${name}</span>
-          <span class="interval-stat-acc">${acc}%</span>
-          <span class="interval-stat-acc" style="font-size:9px;opacity:0.5">${is.presentations} seen</span>
-        </div>`;
-      }).filter(Boolean).join("");
-      if (ivCells) {
-        intervalTableHTML = `
-          <div class="setting-label" style="margin-top:14px">Interval Accuracy</div>
-          <div class="interval-stat-grid">${ivCells}</div>`;
-      }
-    }
-    errorPatternsHTML = `<div class="error-patterns-panel">
-      <div class="setting-label">Error Patterns <span style="font-size:9px;opacity:0.6">(${ec.total} errors)</span></div>
-      ${errorTypesHTML}
-      ${intervalTableHTML}
     </div>`;
   }
 
@@ -1342,31 +1254,10 @@ function render() {
     const items = state.history.slice(0, 8).map(h => {
       const borderColor = h.correct ? "#4ade80" : "#f87171";
       const label = h.mystery.map(n => NOTE_NAMES[n.pitch] + n.octave).join(", ");
-      let ivInfo = "";
-      if (h.mystery.length >= 2) {
-        const sorted = h.mystery.slice().sort((a, b) => a.pitch - b.pitch);
-        const ivs = [];
-        for (let i = 0; i < sorted.length; i++)
-          for (let j = i + 1; j < sorted.length; j++)
-            ivs.push(intervalName(((sorted[j].pitch - sorted[i].pitch) + 12) % 12));
-        ivInfo = ` <span style="color:#6366f1;font-size:11px;opacity:0.7">[${ivs.join(",")}]</span>`;
-      }
       const icon = h.correct ? "✓" : "✗";
       const iconClass = h.correct ? "history-correct" : "history-wrong";
-      let guessInfo = "";
-      if (!h.correct && h.guess && h.guess.length > 0) {
-        const guessNames = h.guess.map(g => NOTE_NAMES[g]).join(", ");
-        const mysteryPitches = h.mystery.map(n => n.pitch);
-        const wrongPitches = h.guess.filter(g => !mysteryPitches.includes(g));
-        const missedPitches = mysteryPitches.filter(p => !h.guess.includes(p));
-        let distInfo = "";
-        if (missedPitches.length === 1 && wrongPitches.length === 1) {
-          distInfo = ` ${semitoneDist(missedPitches[0], wrongPitches[0])}st`;
-        }
-        guessInfo = ` <span style="color:#f87171;font-size:10px;opacity:0.6">you: ${guessNames}${distInfo}</span>`;
-      }
       return `<div class="history-item" style="border-left-color:${borderColor}">
-        <span class="history-answer">${label}${ivInfo}${guessInfo}</span>
+        <span class="history-answer">${label}</span>
         <span class="${iconClass}">${icon}</span>
       </div>`;
     }).join("");
@@ -1386,14 +1277,12 @@ function render() {
         </div>
         ${state.mode === 'game' ? `<div style="display:flex;gap:6px;align-items:center">
           <button class="settings-btn${state.showStats?' active':''}" onclick="state.showStats=!state.showStats;render()" style="font-size:11px;letter-spacing:1px">stats</button>
-          <button class="settings-btn${state.showErrorPatterns?' active':''}" onclick="state.showErrorPatterns=!state.showErrorPatterns;render()" style="font-size:11px;letter-spacing:1px">errors</button>
           <button class="settings-btn${state.showSettings?' active':''}" onclick="state.showSettings=!state.showSettings;render()">⚙</button>
         </div>` : ''}
       </div>
     </header>
     ${state.mode === "game" ? settingsHTML : ""}
     ${state.mode === "game" ? pitchStatsHTML : ""}
-    ${state.mode === "game" ? errorPatternsHTML : ""}
     ${state.mode === "game" ? `<div class="stats-row">
       <div class="stat"><span class="stat-num">${state.streak}</span><span class="stat-label">streak</span></div>
       <div class="stat"><span class="stat-num">${state.bestStreak}</span><span class="stat-label">best</span></div>
