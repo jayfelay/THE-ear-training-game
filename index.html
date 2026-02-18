@@ -1195,8 +1195,10 @@ function render() {
         if (total > maxConf) { maxConf = total; maxConfPitch = j; }
       }
       if (maxConf > 0.3 && maxConfPitch >= 0) {
-        const ivLabel = intervalName(semitoneDist(idx, maxConfPitch));
-        confText = `<span class="pitch-stat-acc" style="font-size:9px;opacity:0.5">\u2192 ${NOTE_NAMES[maxConfPitch]} (${ivLabel})</span>`;
+        const anchor = nearestAnchor(maxConfPitch);
+        const anchorLabel = anchor >= 0 ? DEGREE_LABELS[anchor] : "";
+        const hint = anchorLabel ? ` (near ${anchorLabel})` : "";
+        confText = `<span class="pitch-stat-acc" style="font-size:9px;opacity:0.5">\u2192 ${NOTE_NAMES[maxConfPitch]}${hint}</span>`;
       }
       return `<div class="pitch-stat-cell" style="background:${bgColor};color:${textColor}">
         <span class="pitch-stat-name">${display}</span>
@@ -1351,8 +1353,20 @@ function render() {
       }
       const icon = h.correct ? "✓" : "✗";
       const iconClass = h.correct ? "history-correct" : "history-wrong";
+      let guessInfo = "";
+      if (!h.correct && h.guess && h.guess.length > 0) {
+        const guessNames = h.guess.map(g => NOTE_NAMES[g]).join(", ");
+        const mysteryPitches = h.mystery.map(n => n.pitch);
+        const wrongPitches = h.guess.filter(g => !mysteryPitches.includes(g));
+        const missedPitches = mysteryPitches.filter(p => !h.guess.includes(p));
+        let distInfo = "";
+        if (missedPitches.length === 1 && wrongPitches.length === 1) {
+          distInfo = ` ${semitoneDist(missedPitches[0], wrongPitches[0])}st`;
+        }
+        guessInfo = ` <span style="color:#f87171;font-size:10px;opacity:0.6">you: ${guessNames}${distInfo}</span>`;
+      }
       return `<div class="history-item" style="border-left-color:${borderColor}">
-        <span class="history-answer">${label}${ivInfo}</span>
+        <span class="history-answer">${label}${ivInfo}${guessInfo}</span>
         <span class="${iconClass}">${icon}</span>
       </div>`;
     }).join("");
