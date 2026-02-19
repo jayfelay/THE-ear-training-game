@@ -1,43 +1,49 @@
 # CLAUDE.md — THE Ear Training Game
 
-## Project Overview
+## Project Purpose
 
-**THE Ear Training Game** is a browser-based ear training application for chromatic pitch recognition. Users listen to a cadence that establishes a musical key, then identify mystery note(s) from a chromatic grid. The entire application is a **single HTML file** (`index.html`, ~900 lines) with no external dependencies, build system, or backend.
+THE Ear Training Game is a research-informed ear training tool exploring how adaptive perceptual learning techniques can accelerate chromatic pitch recognition. It started as a personal tool — existing ear training apps don't adapt to individual weaknesses — and evolved into an implementation of ideas from Kellman's ARTS algorithm, spaced repetition, and confusion pair analysis.
 
-The app features an **ARTS-inspired adaptive learning algorithm** that tracks per-pitch accuracy, response time, and confusion pairs to optimize note selection — targeting weak spots while spacing out mastered material.
+The north star is **algorithm fidelity**: getting the adaptive engine as close as possible to a faithful implementation of ARTS principles, where response time drives spacing decisions and the system genuinely targets the learner's weak spots. Development is iterative — features get added, tested through real use, and stripped back if they add complexity without serving the learning experience.
+
+See [README.md](README.md) for the full project story, research foundations, and feature list.
 
 ## Architecture
 
 ### Single-File Application
 
-The entire app lives in `index.html` with three embedded sections:
+The entire app lives in `index.html` (~1300 lines) with embedded CSS and JavaScript:
 
 | Section | Lines | Description |
 |---------|-------|-------------|
-| HTML/CSS | 1–187 | Document structure, all styles in a `<style>` tag |
-| JavaScript | 193–902 | Audio engine, state, adaptive algorithm, game logic, persistence, and rendering in a `<script>` tag |
+| HTML/CSS | 1–217 | Document structure, all styles in a `<style>` tag |
+| JavaScript | 223–1299 | Audio engine, state, adaptive algorithm, game logic, persistence, and rendering in a `<script>` tag |
 
 There is **no** `package.json`, build tool, bundler, framework, test suite, or linter.
 
 ### Code Organization (within `index.html`)
 
-1. **Audio Engine** (lines 194–303) — Constants (`NOTE_NAMES`, `ENHARMONIC`, `DEGREE_LABELS`, `SOLFEGE`), configuration objects (`CADENCE_PATTERNS`, `INSTRUMENTS`, `TEMPO_SETTINGS`), Web Audio API synthesis (`noteToFreq`, `playNote`, `playChord`), and playback bus management (`stopPlayback`, `newPlaybackBus`).
+The JavaScript is divided into sections marked with `// ─── Section Name ───` comment dividers:
 
-2. **State** (lines 305–324) — A single global `state` object holding all application state (settings, game state, statistics, history, UI toggles).
+1. **Audio Engine** (`// ─── Audio Engine ───`) — Constants (`NOTE_NAMES`, `ENHARMONIC`, `DEGREE_LABELS`, `SOLFEGE`, `INTERVAL_NAMES`), configuration objects (`CADENCE_PATTERNS`, `INSTRUMENTS`, `TEMPO_SETTINGS`), Web Audio API synthesis (`noteToFreq`, `playNote`, `playChord`), and playback bus management (`stopPlayback`, `newPlaybackBus`).
 
-3. **Adaptive Learning** (lines 326–475) — ARTS-inspired algorithm: `adaptive` state object with per-pitch stats (`recentResults`, `recentRTs`, confusion matrix), `computePriority()` (error boost, RT-modulated spacing, confusion boost, fluency dampening), `selectPitch()` (roulette wheel with enforced delay, starvation avoidance, previous-round dampening, combination deck boost), `updateAdaptiveStats()` (sliding windows, confusion matrix decay).
+2. **State** (`// ─── State ───`) — A single global `state` object holding all application state: settings, game state, statistics, history, UI toggles, and drone mode state.
 
-4. **Playback** (lines 477–578) — `playCadenceSeq`, `playMysterySeq`, `previewNote`, `startRound` (with RT clock), `replayAll`, `replayCadenceOnly`, `replayMysteryOnly`.
+3. **Adaptive Learning** (`// ─── Adaptive Learning (ARTS-inspired) ───`) — The `adaptive` object with per-pitch stats, confusion matrix, interval stats, and error type counters. Contains the core algorithm functions: `computePriority()`, `selectPitch()`, `updateAdaptiveStats()`. Also includes interval analysis helpers (`semitoneDist`, `intervalName`, `nearestAnchor`, `classifyError`, `checkIntervalPreserved`, `attributeConfusions`) and combination deck management (`buildCombinationDeck`, `comboKey`).
 
-5. **Game Logic** (lines 580–627) — `handleReveal`, `isCorrect`, `guessButtonClass`, `requiredGuesses`.
+4. **Playback** (follows Adaptive Learning) — `playCadenceSeq`, `playMysterySeq`, `previewNote`, `startRound` (with RT clock), `replayAll`, `replayCadenceOnly`, `replayMysteryOnly`.
 
-6. **Settings** (line 630) — `setSetting(key, val)` updates state, saves, and re-renders.
+5. **Drone Mode Audio** (`// ─── Drone Mode Audio ───`) — Drone oscillator management (`startDrone`, `stopDrone`), sustained note toggling (`startDroneNote`, `stopDroneNote`), mode entry/exit (`enterDroneMode`, `exitDroneMode`).
 
-7. **Persistence** (lines 632–722) — `saveProgress()` serializes to localStorage (version-stamped), `loadProgress()` validates and restores on init, `resetProgress()` clears everything with confirmation.
+6. **Game Logic** (follows Drone Mode) — `toggleGuess`, `handleReveal`, `isCorrect`, `guessButtonClass`, `requiredGuesses`.
 
-8. **Render** (lines 724–898) — A single `render()` function that rebuilds the entire DOM via `innerHTML`. Includes settings panel, pitch stats panel, stats row, game area, and history.
+7. **Settings Helpers** (`// ─── Settings Helpers ───`) — `setSetting(key, val)` updates state, saves, and re-renders.
 
-9. **Init** (lines 900–902) — `loadProgress()` then `render()`.
+8. **Persistence** (`// ─── Persistence ───`) — `saveProgress()` serializes to localStorage (version-stamped), `loadProgress()` validates and restores on init, `resetProgress()` clears everything with confirmation.
+
+9. **Render** (`// ─── Render ───`) — A single `render()` function that rebuilds the entire DOM via `innerHTML`. Includes settings panel, pitch stats panel, stats row, game/drone mode area, and history.
+
+10. **Init** (follows Render) — `loadProgress()` then `render()`.
 
 ### State Management Pattern
 
@@ -50,26 +56,29 @@ No virtual DOM, diffing, or reactive system. Every state change triggers a compl
 ### Adaptive Algorithm
 
 The pitch selection algorithm combines ideas from:
-- **Kellman's ARTS** — Response time as a continuous learning strength signal, enforced minimum delay (D parameter)
-- **Spaced repetition** — Trial-based spacing within sessions, modulated by RT
-- **Interleaving** — Previous-round dampening, combination deck for exhaustive coverage
-- **Confusion pair detection** — 12×12 confusion matrix with exponential decay (0.95/trial)
+- **Kellman's ARTS** — Response time as a continuous learning strength signal, enforced minimum delay (D parameter, typically 3–5 trials)
+- **Spaced repetition** — Trial-based spacing within sessions, RT-modulated coefficients (fast correct → longer spacing, slow correct → shorter spacing)
+- **Interleaving** — Previous-round dampening, combination deck for exhaustive pitch-pair coverage
+- **Confusion pair detection** — 12x12 confusion matrix with exponential decay (0.95/trial), attributed via greedy nearest-pitch matching
+- **Interval-aware error analysis** — Error classification (neighbor, consonance-relative, interval-preserved, distant) with per-interval accuracy tracking for polyphonic mode
 
 Key data structures per pitch:
 - `recentResults[]` — Last 6 binary outcomes (correct/incorrect)
 - `recentRTs[]` — Last 6 response times in ms (parallel to recentResults)
 - `consecutiveCorrect` — Fluency counter
 - `confusionMatrix[12][12]` — Tracks which pitches get confused with each other
+- `intervalStats[12]` — Per-interval accuracy and preservation tracking (polyphonic mode)
+- `errorTypeCounters` — Counts of neighbor, consonance-relative, interval-preserved, and distant errors
 
-Priority computation: error boost (recency-weighted) + spacing boost (RT-modulated coefficient) + confusion boost + coverage boost − fluency dampening.
+Priority computation: error boost (recency-weighted) + spacing boost (RT-modulated coefficient) + confusion boost + neighbor confusion boost + coverage boost − fluency dampening. In polyphonic mode, interval-difficulty-aware selection biases toward weak intervals.
 
 ### Audio Synthesis
 
 - Uses **Web Audio API** (`AudioContext`, `OscillatorNode`, `GainNode`)
-- Two synthesized instruments: Piano and Soft Synth — each with ADSR envelopes and optional harmonics or pad effects
+- Two synthesized instruments: Piano (triangle wave + harmonics) and Soft Synth (sine wave + pad effect) — each with ADSR envelopes
 - Playback bus pattern: all oscillators route through a shared `GainNode` for clean stop/replay
+- Drone mode: sustained tonic with detuned second oscillator for warmth, plus individual sustained notes via triangle+sine oscillator pairs
 - Frequency calculation: `440 * 2^((midi - 69) / 12)`
-- Cadence patterns play major triads in root position
 
 ## Technology Stack
 
@@ -80,22 +89,6 @@ Priority computation: error boost (recency-weighted) + spacing boost (RT-modulat
 - **Frameworks/Libraries:** None
 - **Build Tools:** None
 - **Testing:** None (manual browser testing)
-
-## Key Features
-
-- Single-note or polyphonic (1–8 notes) pitch guessing
-- Three cadence patterns: I-IV-V-I, I-IV-I-V-I, I-vi-IV-V-I
-- Two instruments: Piano, Soft Synth
-- Three tempo options (slow, medium, fast)
-- Single octave (C4) or multi-octave (C2–C6) range
-- Playback controls: replay all, cadence only, notes only
-- Note preview on tap
-- Adaptive pitch selection targeting weak spots
-- Per-pitch stats panel (accuracy % + avg response time, color-coded)
-- Response time display after each reveal
-- Performance tracking: streak, best streak, accuracy %, rounds count
-- Recent history (last 20 rounds, 8 shown)
-- localStorage persistence across sessions with reset option
 
 ## Styling Conventions
 
@@ -129,10 +122,14 @@ python3 -m http.server 8000  # Serve locally if needed for Audio API
 
 ## Conventions for AI Assistants
 
+### Project Philosophy
+
+This project favors incremental refinement over feature accumulation. Features that add UI complexity without clear learning value should be held back. When in doubt, add algorithmic intelligence under the hood rather than surface-level UI. The most recent development pass stripped several premature UI additions — the bar for adding visible complexity is high.
+
 ### Do
 
 - Keep everything in `index.html` unless there's a strong reason to extract files
-- Follow the existing code organization sections (Audio → State → Adaptive → Playback → Logic → Settings → Persistence → Render → Init)
+- Follow the existing code organization sections (use the `// ─── Section Name ───` markers as guides)
 - Mutate `state` directly and call `render()` to update the UI
 - Use template literals for HTML generation in `render()`
 - Use inline `onclick` handlers consistent with the existing pattern
@@ -150,10 +147,11 @@ python3 -m http.server 8000  # Serve locally if needed for Audio API
 
 ### When Adding New Features
 
-- Add new constants/config near the top with existing constants
-- Add new state properties to the `state` object (lines 306–324)
-- Add new adaptive fields to the `adaptive` object (lines 329–345) and update `saveProgress`/`loadProgress`/`resetProgress`
-- Add new game logic functions between Playback and Settings sections
+- Add new constants/config near the top with existing constants in the Audio Engine section
+- Add new state properties to the `state` object in the State section
+- Add new adaptive data structures to the `adaptive` object and update `saveProgress`/`loadProgress`/`resetProgress` to handle them. Add new priority factors in `computePriority()`. Add new per-trial tracking in `updateAdaptiveStats()`
+- Add drone-related functions in the Drone Mode Audio section
+- Add new game logic functions between the Drone Mode Audio and Settings Helpers sections
 - Add new UI in the `render()` function using the existing template literal pattern
 - Add new CSS in the `<style>` tag following the existing section comments
 
@@ -165,7 +163,8 @@ Hosted on **GitHub Pages**. The application is a static single HTML file — pus
 
 ```
 THE-ear-training-game/
-├── CLAUDE.md                      ← This file
+├── CLAUDE.md                      ← This file (AI assistant reference)
 ├── EarTrainingGameThumbnail.png   ← App icon (favicon + apple-touch-icon)
-└── index.html                     ← Entire application (HTML + CSS + JS, ~900 lines)
+├── README.md                      ← Project overview, research context, features
+└── index.html                     ← Entire application (HTML + CSS + JS, ~1300 lines)
 ```
