@@ -365,7 +365,6 @@ const adaptive = {
   roundStartTime: 0,
   pitchStats: Array.from({length: 12}, () => ({
     presentations: 0,
-    correct: 0,
     lastSeenTrial: -100,
     consecutiveCorrect: 0,
     recentResults: [],
@@ -597,7 +596,6 @@ function updateAdaptiveStats() {
     stats.recentRTs.push(rt);
     if (stats.recentRTs.length > 6) stats.recentRTs.shift();
     if (wasCorrect) {
-      stats.correct++;
       stats.consecutiveCorrect++;
     } else {
       stats.consecutiveCorrect = 0;
@@ -1024,7 +1022,6 @@ function loadProgress() {
         a.pitchStats.forEach((ps, i) => {
           if (ps && typeof ps === "object") {
             adaptive.pitchStats[i].presentations = ps.presentations || 0;
-            adaptive.pitchStats[i].correct = ps.correct || 0;
             adaptive.pitchStats[i].lastSeenTrial = ps.lastSeenTrial ?? -100;
             adaptive.pitchStats[i].consecutiveCorrect = ps.consecutiveCorrect || 0;
             adaptive.pitchStats[i].recentResults = Array.isArray(ps.recentResults) ? ps.recentResults.slice(0, 6) : [];
@@ -1073,7 +1070,7 @@ function resetProgress() {
   state.droneOctave = "low"; state.droneActiveNotes = [];
   adaptive.trialNumber = 0; adaptive.roundStartTime = 0;
   adaptive.pitchStats = Array.from({length: 12}, () => ({
-    presentations: 0, correct: 0, lastSeenTrial: -100,
+    presentations: 0, lastSeenTrial: -100,
     consecutiveCorrect: 0, recentResults: [], recentRTs: [],
   }));
   adaptive.confusionMatrix = Array.from({length: 12}, () => Array(12).fill(0));
