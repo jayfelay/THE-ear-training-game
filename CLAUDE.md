@@ -29,7 +29,7 @@ The JavaScript is divided into sections marked with `// ─── Section Name �
 
 2. **State** (`// ─── State ───`) — A single global `state` object holding all application state: settings, game state, statistics, history, UI toggles, and drone mode state.
 
-3. **Adaptive Learning** (`// ─── Adaptive Learning (ARTS-inspired) ───`) — The `adaptive` object with per-pitch stats, confusion matrix, interval stats, and error type counters. Contains the core algorithm functions: `computePriority()`, `selectPitch()`, `updateAdaptiveStats()`. Also includes interval analysis helpers (`semitoneDist`, `nearestAnchor`, `classifyError`, `checkIntervalPreserved`, `attributeConfusions`) and combination deck management (`buildCombinationDeck`, `comboKey`).
+3. **Adaptive Learning** (`// ─── Adaptive Learning (ARTS-inspired) ───`) — The `adaptive` object with per-pitch stats, confusion matrix, and interval stats. Contains the core algorithm functions: `computePriority()`, `selectPitch()`, `updateAdaptiveStats()`. Also includes interval analysis helpers (`semitoneDist`, `checkIntervalPreserved`, `attributeConfusions`) and combination deck management (`buildCombinationDeck`, `comboKey`).
 
 4. **Playback** (follows Adaptive Learning) — `playCadenceSeq`, `playMysterySeq`, `previewNote`, `startRound` (with RT clock), `replayAll`, `replayCadenceOnly`, `replayMysteryOnly`.
 
@@ -60,7 +60,7 @@ The pitch selection algorithm combines ideas from:
 - **Spaced repetition** — Trial-based spacing within sessions, RT-modulated coefficients (fast correct → longer spacing, slow correct → shorter spacing)
 - **Interleaving** — Previous-round dampening, combination deck for exhaustive pitch-pair coverage
 - **Confusion pair detection** — 12x12 confusion matrix with exponential decay (0.95/trial), attributed via greedy nearest-pitch matching. Anchor-slip-aware: when intervals are preserved but placement is wrong (the whole frame shifted, not individual notes), confusion matrix writes at half-weight to avoid over-drilling notes that weren't the real problem
-- **Interval-aware error analysis** — Error classification (neighbor, consonance-relative, interval-preserved, distant) with per-interval accuracy and anchor-slip tracking for polyphonic mode. Slip rate (preserved/presentations) feeds back into interval weakness scoring, so intervals that repeatedly override the root reference get drilled across different positions
+- **Interval-aware error analysis** — Per-interval accuracy and anchor-slip tracking for polyphonic mode. Slip rate (preserved/presentations) feeds back into interval weakness scoring, so intervals that repeatedly override the root reference get drilled across different positions
 
 Key data structures per pitch:
 - `recentResults[]` — Last 6 binary outcomes (correct/incorrect)
@@ -68,7 +68,6 @@ Key data structures per pitch:
 - `consecutiveCorrect` — Fluency counter
 - `confusionMatrix[12][12]` — Tracks which pitches get confused with each other
 - `intervalStats[12]` — Per-interval accuracy and preservation tracking (polyphonic mode)
-- `errorTypeCounters` — Counts of neighbor, consonance-relative, interval-preserved, and distant errors
 
 Priority computation: error boost (recency-weighted) + spacing boost (RT-modulated coefficient) + confusion boost + neighbor confusion boost + coverage boost − fluency dampening. In polyphonic mode, interval-difficulty-aware selection biases toward weak intervals using both accuracy and anchor-slip rate, with the interval boost cap scaling with polyphony level (3.0 at level 1, up to 6.5 at level 8) to reflect that intervals become the dominant challenge as notes increase.
 

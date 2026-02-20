@@ -61,7 +61,7 @@
     border-radius: 14px; padding: 18px; margin-bottom: 20px;
     display: flex; flex-direction: column; gap: 16px;
   }
-  .settings-panel.hidden { display: none; }
+
   .setting-group { display: flex; flex-direction: column; gap: 8px; }
   .setting-label { font-size: 11px; color: #8888aa; text-transform: uppercase; letter-spacing: 1.5px; }
   .toggle-row { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -380,13 +380,6 @@ const adaptive = {
     bothCorrect: 0,
     preserved: 0,
   })),
-  errorTypeCounters: {
-    neighbor: 0,
-    consonanceRelative: 0,
-    intervalPreserved: 0,
-    distant: 0,
-    total: 0,
-  },
 };
 
 function semitoneDist(a, b) {
@@ -394,26 +387,7 @@ function semitoneDist(a, b) {
   return d > 6 ? 12 - d : d;
 }
 
-function nearestAnchor(pitch) {
-  const anchors = [0, 5, 7]; // root, P4, P5
-  let closest = -1, minDist = 99;
-  for (const a of anchors) {
-    const d = semitoneDist(pitch, a);
-    if (d < minDist) { minDist = d; closest = a; }
-  }
-  return minDist <= 2 ? closest : -1;
-}
 
-function classifyError(target, guess) {
-  const dist = semitoneDist(target, guess);
-  if (dist <= 2) return 'neighbor';
-  const targetAnchor = nearestAnchor(target);
-  const guessAnchor = nearestAnchor(guess);
-  if (targetAnchor !== -1 && guessAnchor !== -1 && targetAnchor !== guessAnchor) {
-    return 'consonanceRelative';
-  }
-  return 'distant';
-}
 
 function checkIntervalPreserved(targets, guesses) {
   if (targets.length < 2 || targets.length !== guesses.length) return false;
@@ -614,9 +588,6 @@ function updateAdaptiveStats() {
   const confusionWeight = wasAnchorSlip ? 0.5 : 1.0;
   attributed.forEach(({ target, guess }) => {
     adaptive.confusionMatrix[target][guess] += confusionWeight;
-    const errType = classifyError(target, guess);
-    adaptive.errorTypeCounters[errType]++;
-    adaptive.errorTypeCounters.total++;
   });
 
   // Interval stats (polyphonic mode)
@@ -633,7 +604,6 @@ function updateAdaptiveStats() {
     }
     // Anchor-slip tracking: reuse wasAnchorSlip from confusion attribution above
     if (wasAnchorSlip && missedTargets.length > 0) {
-      adaptive.errorTypeCounters.intervalPreserved++;
       const sorted = mysteryPitches.slice().sort((a, b) => a - b);
       for (let i = 0; i < sorted.length; i++)
         for (let j = i + 1; j < sorted.length; j++)
@@ -986,7 +956,6 @@ function saveProgress() {
         confusionMatrix: adaptive.confusionMatrix,
         uncoveredPitches: [...adaptive.uncoveredPitches],
         intervalStats: adaptive.intervalStats,
-        errorTypeCounters: adaptive.errorTypeCounters,
       },
     };
     localStorage.setItem("ear-training-progress", JSON.stringify(data));
@@ -1046,14 +1015,6 @@ function loadProgress() {
           }
         });
       }
-      if (a.errorTypeCounters && typeof a.errorTypeCounters === "object") {
-        const ec = a.errorTypeCounters;
-        adaptive.errorTypeCounters.neighbor = ec.neighbor || 0;
-        adaptive.errorTypeCounters.consonanceRelative = ec.consonanceRelative || 0;
-        adaptive.errorTypeCounters.intervalPreserved = ec.intervalPreserved || 0;
-        adaptive.errorTypeCounters.distant = ec.distant || 0;
-        adaptive.errorTypeCounters.total = ec.total || 0;
-      }
     }
   } catch (e) { /* corrupt data — silently use defaults */ }
 }
@@ -1080,9 +1041,6 @@ function resetProgress() {
   adaptive.intervalStats = Array.from({length: 12}, () => ({
     presentations: 0, bothCorrect: 0, preserved: 0,
   }));
-  adaptive.errorTypeCounters = {
-    neighbor: 0, consonanceRelative: 0, intervalPreserved: 0, distant: 0, total: 0,
-  };
   render();
 }
 
