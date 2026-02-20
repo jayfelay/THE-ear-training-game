@@ -226,12 +226,11 @@ const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 const ENHARMONIC = {"C#":"Db","D#":"Eb","F#":"Gb","G#":"Ab","A#":"Bb"};
 const DEGREE_LABELS = ["1","♭2","2","♭3","3","4","♯4/♭5","5","♭6","6","♭7","7"];
 const SOLFEGE = ["Do","Ra","Re","Me","Mi","Fa","Fi/Se","Sol","Le","La","Te","Ti"];
-const INTERVAL_NAMES = ["P1","m2","M2","m3","M3","P4","TT","P5","m6","M6","m7","M7"];
 
 const CADENCE_PATTERNS = {
-  "I-IV-V-I": [0,5,7,0],
-  "I-IV-I-V-I": [0,5,0,7,0],
-  "I-vi-IV-V-I": [0,9,5,7,0],
+  "I-IV-V-I": [[0],[5],[7],[0]],
+  "I-IV-I-V-I": [[0],[5],[0],[7],[0]],
+  "I-vi-IV-V-I": [[0],[9,true],[5],[7],[0]],
 };
 
 const INSTRUMENTS = {
@@ -317,11 +316,12 @@ function playNote(ctx, freq, startTime, duration, instrumentKey, volume, dest) {
   g.linearRampToValueAtTime(0, startTime + duration + ins.release);
 }
 
-function playChord(ctx, rootSemitone, octave, startTime, duration, instrumentKey, volume, dest) {
+function playChord(ctx, rootSemitone, octave, startTime, duration, instrumentKey, volume, dest, minor) {
   const root = rootSemitone % 12;
+  const third = minor ? 3 : 4;
   const freqs = [
     noteToFreq(NOTE_NAMES[root], octave),
-    noteToFreq(NOTE_NAMES[(root+4)%12], root+4>=12 ? octave+1 : octave),
+    noteToFreq(NOTE_NAMES[(root+third)%12], root+third>=12 ? octave+1 : octave),
     noteToFreq(NOTE_NAMES[(root+7)%12], root+7>=12 ? octave+1 : octave),
   ];
   freqs.forEach(f => playNote(ctx, f, startTime, duration, instrumentKey, volume, dest));
@@ -393,10 +393,6 @@ const adaptive = {
 function semitoneDist(a, b) {
   const d = Math.abs(a - b) % 12;
   return d > 6 ? 12 - d : d;
-}
-
-function intervalName(semitones) {
-  return INTERVAL_NAMES[((semitones % 12) + 12) % 12];
 }
 
 function nearestAnchor(pitch) {
@@ -637,18 +633,13 @@ function updateAdaptiveStats() {
         }
       }
     }
-    // Check interval preservation (only on incorrect rounds with matching guess count)
-    const mp = mysteryPitches.slice().sort((a, b) => a - b);
-    const ug = [...new Set(state.guesses)].sort((a, b) => a - b);
-    const roundCorrect = ug.length === mp.length && ug.every((g, i) => g === mp[i]);
-    if (!roundCorrect && guessedPitches.length === mysteryPitches.length) {
-      if (checkIntervalPreserved(mysteryPitches, guessedPitches)) {
-        adaptive.errorTypeCounters.intervalPreserved++;
-        const sorted = mysteryPitches.slice().sort((a, b) => a - b);
-        for (let i = 0; i < sorted.length; i++)
-          for (let j = i + 1; j < sorted.length; j++)
-            adaptive.intervalStats[(sorted[j] - sorted[i] + 12) % 12].preserved++;
-      }
+    // Anchor-slip tracking: reuse wasAnchorSlip from confusion attribution above
+    if (wasAnchorSlip && missedTargets.length > 0) {
+      adaptive.errorTypeCounters.intervalPreserved++;
+      const sorted = mysteryPitches.slice().sort((a, b) => a - b);
+      for (let i = 0; i < sorted.length; i++)
+        for (let j = i + 1; j < sorted.length; j++)
+          adaptive.intervalStats[(sorted[j] - sorted[i] + 12) % 12].preserved++;
     }
   }
 
@@ -663,8 +654,8 @@ function playCadenceSeq(dest) {
   const t = TEMPO_SETTINGS[state.tempo];
   const pattern = CADENCE_PATTERNS[state.cadenceType];
   const now = ctx.currentTime + 0.05;
-  pattern.forEach((semitone, i) => {
-    playChord(ctx, semitone, 4, now + i * t.chordSpacing, t.chordDuration, state.instrument, 0.18, dest);
+  pattern.forEach((chord, i) => {
+    playChord(ctx, chord[0], 4, now + i * t.chordSpacing, t.chordDuration, state.instrument, 0.18, dest, chord[1]);
   });
   return now + pattern.length * t.chordSpacing;
 }

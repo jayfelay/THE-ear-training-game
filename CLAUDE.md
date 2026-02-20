@@ -25,11 +25,11 @@ There is **no** `package.json`, build tool, bundler, framework, test suite, or l
 
 The JavaScript is divided into sections marked with `// ─── Section Name ───` comment dividers:
 
-1. **Audio Engine** (`// ─── Audio Engine ───`) — Constants (`NOTE_NAMES`, `ENHARMONIC`, `DEGREE_LABELS`, `SOLFEGE`, `INTERVAL_NAMES`), configuration objects (`CADENCE_PATTERNS`, `INSTRUMENTS`, `TEMPO_SETTINGS`), Web Audio API synthesis (`noteToFreq`, `playNote`, `playChord`), and playback bus management (`stopPlayback`, `newPlaybackBus`).
+1. **Audio Engine** (`// ─── Audio Engine ───`) — Constants (`NOTE_NAMES`, `ENHARMONIC`, `DEGREE_LABELS`, `SOLFEGE`), configuration objects (`CADENCE_PATTERNS`, `INSTRUMENTS`, `TEMPO_SETTINGS`), Web Audio API synthesis (`noteToFreq`, `playNote`, `playChord`), and playback bus management (`stopPlayback`, `newPlaybackBus`). Cadence chords respect diatonic quality (vi = minor).
 
 2. **State** (`// ─── State ───`) — A single global `state` object holding all application state: settings, game state, statistics, history, UI toggles, and drone mode state.
 
-3. **Adaptive Learning** (`// ─── Adaptive Learning (ARTS-inspired) ───`) — The `adaptive` object with per-pitch stats, confusion matrix, interval stats, and error type counters. Contains the core algorithm functions: `computePriority()`, `selectPitch()`, `updateAdaptiveStats()`. Also includes interval analysis helpers (`semitoneDist`, `intervalName`, `nearestAnchor`, `classifyError`, `checkIntervalPreserved`, `attributeConfusions`) and combination deck management (`buildCombinationDeck`, `comboKey`).
+3. **Adaptive Learning** (`// ─── Adaptive Learning (ARTS-inspired) ───`) — The `adaptive` object with per-pitch stats, confusion matrix, interval stats, and error type counters. Contains the core algorithm functions: `computePriority()`, `selectPitch()`, `updateAdaptiveStats()`. Also includes interval analysis helpers (`semitoneDist`, `nearestAnchor`, `classifyError`, `checkIntervalPreserved`, `attributeConfusions`) and combination deck management (`buildCombinationDeck`, `comboKey`).
 
 4. **Playback** (follows Adaptive Learning) — `playCadenceSeq`, `playMysterySeq`, `previewNote`, `startRound` (with RT clock), `replayAll`, `replayCadenceOnly`, `replayMysteryOnly`.
 
