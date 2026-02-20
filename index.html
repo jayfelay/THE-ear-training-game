@@ -550,8 +550,9 @@ function selectPitch(excludePitches) {
     }
   }
   // Interval-difficulty-aware selection: bias toward weak intervals in polyphonic mode
-  // Total interval boost per candidate is capped at 3.0 to prevent domination at high polyphony
+  // Incorporates both accuracy and anchor-slip rate; cap scales with polyphony level
   if (excludePitches.length >= 1 && state.polyphony >= 2) {
+    const ivCap = 3.0 + (state.polyphony - 1) * 0.5;
     for (let i = 0; i < 12; i++) {
       if (priorities[i] <= 0) continue;
       let ivBoost = 0;
@@ -561,10 +562,11 @@ function selectPitch(excludePitches) {
         const ivStats = adaptive.intervalStats[iv];
         if (ivStats.presentations >= 3) {
           const acc = ivStats.bothCorrect / ivStats.presentations;
-          ivBoost += Math.max(0, (1 - acc) * 2.5);
+          const slipRate = ivStats.preserved / ivStats.presentations;
+          ivBoost += Math.max(0, (1 - acc) * 2.5 + slipRate * 2.0);
         }
       }
-      priorities[i] += Math.min(ivBoost, 3.0);
+      priorities[i] += Math.min(ivBoost, ivCap);
     }
   }
   const total = priorities.reduce((a, b) => a + b, 0);
@@ -610,8 +612,14 @@ function updateAdaptiveStats() {
   const missedTargets = mysteryPitches.filter(p => !guessedPitches.includes(p));
   const wrongGuesses = guessedPitches.filter(g => !mysteryPitches.includes(g));
   const attributed = attributeConfusions(missedTargets, wrongGuesses);
+  // Anchor slip: correct intervals but wrong placement — reduce confusion matrix weight
+  // because the per-note confusions are misleading (the whole frame shifted, not individual notes)
+  const wasAnchorSlip = mysteryPitches.length >= 2
+    && guessedPitches.length === mysteryPitches.length
+    && checkIntervalPreserved(mysteryPitches, guessedPitches);
+  const confusionWeight = wasAnchorSlip ? 0.5 : 1.0;
   attributed.forEach(({ target, guess }) => {
-    adaptive.confusionMatrix[target][guess]++;
+    adaptive.confusionMatrix[target][guess] += confusionWeight;
     const errType = classifyError(target, guess);
     adaptive.errorTypeCounters[errType]++;
     adaptive.errorTypeCounters.total++;
