@@ -31,7 +31,7 @@ The adaptive engine draws on several lines of research in perceptual and adaptiv
 
 **Interleaving and coverage** — The algorithm ensures all 12 pitches get presented before any repeat in a coverage cycle, dampens pitches from the previous round to force interleaving, and (in polyphonic mode) uses a combination deck to systematically cover pitch pairs.
 
-**Interval-aware error analysis** — In multi-note mode, errors are classified by type: neighbor confusions (off by a semitone), consonance-relative errors (confusing notes with similar harmonic function), and interval-preserved errors (wrong notes but correct intervals between them). These classifications feed back into pitch selection to target the specific weaknesses they reveal.
+**Anchor slip and interval-aware error analysis** — In multi-note mode, the biggest failure mode isn't mishearing individual notes — it's losing the root. When a competing interval (like a perfect fourth) overwrites the tonal center, the ear reassigns the root and all identifications shift together. The algorithm detects this: if the guessed notes preserve the correct intervals but sit on the wrong position, it's an anchor slip, not a note confusion. The response is different too — rather than re-drilling individual notes, the algorithm targets that interval type across different positions to build robust root retention.
 
 The goal isn't to replicate ARTS exactly — it's a browser game, not a lab study. But the core principles (RT as a learning signal, adaptive spacing, confusion-aware scheduling) provide a much stronger foundation than random or fixed presentation.
 
