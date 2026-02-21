@@ -453,8 +453,8 @@ function computePriority(pitchIdx) {
   const medianRT = correctRTs.length > 0
     ? correctRTs.slice().sort((a, b) => a - b)[Math.floor(correctRTs.length / 2)]
     : 0;
-  // Polyphony-aware motor floor: ~500ms extra per additional note (motor overhead)
-  const motorFloor = 1800 + (state.polyphony - 1) * 500;
+  // Polyphony-aware motor floor: ~1300ms extra per additional note (motor overhead)
+  const motorFloor = 1400 + (state.polyphony - 1) * 1300;
   // Spacing boost: modulated by response time (ARTS core mechanism)
   if (stats.presentations > 0) {
     let spacingCoeff = 0.2;
@@ -620,6 +620,18 @@ function updateAdaptiveStats() {
   for (let i = 0; i < 12; i++)
     for (let j = 0; j < 12; j++)
       adaptive.confusionMatrix[i][j] *= 0.95;
+
+  // Interval stats decay: prevents calcification of lifetime averages
+  // Same 0.95 rate as confusion matrix (~14-trial half-life)
+  // Decaying both numerator and denominator preserves ratios but shrinks
+  // effective sample size, so recent performance dominates over time.
+  // When presentations decays below 3, the selectPitch threshold gate
+  // (ivStats.presentations >= 3) silences stale data automatically.
+  for (let i = 0; i < 12; i++) {
+    adaptive.intervalStats[i].presentations *= 0.95;
+    adaptive.intervalStats[i].bothCorrect *= 0.95;
+    adaptive.intervalStats[i].preserved *= 0.95;
+  }
 
   // Trial log: record minimum data for offline analysis
   adaptive.trialLog.push({
