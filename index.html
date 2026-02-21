@@ -380,6 +380,7 @@ const adaptive = {
     bothCorrect: 0,
     preserved: 0,
   })),
+  trialLog: [],
 };
 
 function semitoneDist(a, b) {
@@ -554,6 +555,8 @@ function selectPitch(excludePitches) {
 }
 
 function updateAdaptiveStats() {
+  // Trial log: capture priorities before they're consumed by this trial's stats update
+  const prioritySnapshot = Array.from({length: 12}, (_, i) => +computePriority(i).toFixed(2));
   adaptive.trialNumber++;
   const rt = state.lastRT;
   const mysteryPitches = state.mysteryNotes.map(n => n.pitch);
@@ -615,6 +618,15 @@ function updateAdaptiveStats() {
   for (let i = 0; i < 12; i++)
     for (let j = 0; j < 12; j++)
       adaptive.confusionMatrix[i][j] *= 0.95;
+
+  // Trial log: record minimum data for offline analysis
+  adaptive.trialLog.push({
+    m: mysteryPitches,
+    g: guessedPitches,
+    rt: Math.round(rt),
+    p: prioritySnapshot,
+  });
+  if (adaptive.trialLog.length > 500) adaptive.trialLog.shift();
 }
 
 function playCadenceSeq(dest) {
@@ -956,6 +968,7 @@ function saveProgress() {
         confusionMatrix: adaptive.confusionMatrix,
         uncoveredPitches: [...adaptive.uncoveredPitches],
         intervalStats: adaptive.intervalStats,
+        trialLog: adaptive.trialLog,
       },
     };
     localStorage.setItem("ear-training-progress", JSON.stringify(data));
@@ -1015,6 +1028,7 @@ function loadProgress() {
           }
         });
       }
+      if (Array.isArray(a.trialLog)) adaptive.trialLog = a.trialLog.slice(-500);
     }
   } catch (e) { /* corrupt data — silently use defaults */ }
 }
@@ -1041,7 +1055,27 @@ function resetProgress() {
   adaptive.intervalStats = Array.from({length: 12}, () => ({
     presentations: 0, bothCorrect: 0, preserved: 0,
   }));
+  adaptive.trialLog = [];
   render();
+}
+
+function exportTrialLog() {
+  const data = {
+    exportedAt: new Date().toISOString(),
+    trialNumber: adaptive.trialNumber,
+    polyphonyAtExport: state.polyphony,
+    log: adaptive.trialLog,
+    intervalStats: adaptive.intervalStats,
+    confusionMatrix: adaptive.confusionMatrix,
+  };
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ear-training-log-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Render ───
@@ -1091,6 +1125,9 @@ function render() {
           <button class="toggle-btn ${state.octaveMode==='multiple'?'active':''}" onclick="setSetting('octaveMode','multiple')">Multiple Octaves</button>
         </div>
         <div class="octave-helper">${state.octaveMode==="single" ? "Notes around middle C (C4)" : "C3 – C5 · one octave above &amp; below middle C"}</div>
+      </div>
+      <div class="setting-group">
+        <button class="toggle-btn" onclick="exportTrialLog()">Export Trial Log</button>
       </div>
       <div class="setting-group">
         <button class="toggle-btn" onclick="resetProgress()" style="color:#f87171;border-color:rgba(248,113,113,0.3)">Reset All Progress</button>
