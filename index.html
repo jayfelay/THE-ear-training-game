@@ -509,7 +509,7 @@ function selectPitch(excludePitches) {
   // Enforced minimum delay (ARTS D parameter): pitches seen within last 3 trials
   // cannot reappear — prevents working-memory-based false fluency (Kellman recommends D=3-5)
   // Only applied when enough pitches remain (avoids starvation at high polyphony)
-  const minDelay = 3;
+  const minDelay = state.polyphony <= 2 ? 3 : state.polyphony <= 4 ? 2 : 1;
   const delayBlocked = [];
   for (let i = 0; i < 12; i++) {
     const seen = adaptive.pitchStats[i].lastSeenTrial;
