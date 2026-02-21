@@ -453,12 +453,14 @@ function computePriority(pitchIdx) {
   const medianRT = correctRTs.length > 0
     ? correctRTs.slice().sort((a, b) => a - b)[Math.floor(correctRTs.length / 2)]
     : 0;
+  // Polyphony-aware motor floor: ~500ms extra per additional note (motor overhead)
+  const motorFloor = 1800 + (state.polyphony - 1) * 500;
   // Spacing boost: modulated by response time (ARTS core mechanism)
   if (stats.presentations > 0) {
     let spacingCoeff = 0.2;
     if (medianRT > 0 && stats.recentResults.length > 0 && stats.recentResults[stats.recentResults.length - 1] === 1) {
-      if (medianRT < 3000) spacingCoeff = 0.1;       // fast correct → longer gap
-      else if (medianRT > 8000) spacingCoeff = 0.4;   // slow correct → shorter gap (fragile)
+      if (medianRT < motorFloor + 1000) spacingCoeff = 0.1;       // fast correct → longer gap
+      else if (medianRT > motorFloor + 4000) spacingCoeff = 0.4;  // slow correct → shorter gap (fragile)
     }
     priority += Math.min(trialsSinceSeen * spacingCoeff, 3.0);
   }
@@ -481,7 +483,7 @@ function computePriority(pitchIdx) {
     if (neighborRatio > 0.3) priority += Math.min(neighborConf * 0.4, 2.0);
   }
   // Mastery dampening: requires consecutive correct AND fast responses (fluency)
-  const isFluent = stats.consecutiveCorrect >= 3 && medianRT > 0 && medianRT < 5000;
+  const isFluent = stats.consecutiveCorrect >= 3 && medianRT > 0 && medianRT < motorFloor + 2000;
   if (isFluent) priority *= 0.5;
   if (adaptive.uncoveredPitches.has(pitchIdx)) priority += 5.0;
   return Math.max(priority, 0.2);
