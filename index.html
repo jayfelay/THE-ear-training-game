@@ -381,6 +381,7 @@ const adaptive = {
     preserved: 0,
   })),
   trialLog: [],
+  rtHistory: {},  // correct RTs per polyphony: { 1: [rt, rt, ...], 2: [...], ... }
 };
 
 function semitoneDist(a, b) {
@@ -453,14 +454,27 @@ function computePriority(pitchIdx) {
   const medianRT = correctRTs.length > 0
     ? correctRTs.slice().sort((a, b) => a - b)[Math.floor(correctRTs.length / 2)]
     : 0;
-  // Polyphony-aware motor floor: ~1300ms extra per additional note (motor overhead)
-  const motorFloor = 1400 + (state.polyphony - 1) * 1300;
+  // Self-calibrating RT thresholds: derived from player's own correct RT history
+  // Falls back to hardcoded motor floor formula for first 15 correct trials (cold start)
+  const rtHist = adaptive.rtHistory[state.polyphony];
+  let fastThreshold, slowThreshold, fluencyThreshold;
+  if (rtHist && rtHist.length >= 15) {
+    const sorted = rtHist.slice().sort((a, b) => a - b);
+    fastThreshold = sorted[Math.floor(sorted.length * 0.25)];
+    slowThreshold = sorted[Math.floor(sorted.length * 0.75)];
+    fluencyThreshold = sorted[Math.floor(sorted.length * 0.35)];
+  } else {
+    const motorFloor = 1400 + (state.polyphony - 1) * 1300;
+    fastThreshold = motorFloor + 1000;
+    slowThreshold = motorFloor + 4000;
+    fluencyThreshold = motorFloor + 2000;
+  }
   // Spacing boost: modulated by response time (ARTS core mechanism)
   if (stats.presentations > 0) {
     let spacingCoeff = 0.2;
     if (medianRT > 0 && stats.recentResults.length > 0 && stats.recentResults[stats.recentResults.length - 1] === 1) {
-      if (medianRT < motorFloor + 1000) spacingCoeff = 0.1;       // fast correct → longer gap
-      else if (medianRT > motorFloor + 4000) spacingCoeff = 0.4;  // slow correct → shorter gap (fragile)
+      if (medianRT < fastThreshold) spacingCoeff = 0.1;       // fast correct → longer gap
+      else if (medianRT > slowThreshold) spacingCoeff = 0.4;  // slow correct → shorter gap (fragile)
     }
     priority += Math.min(trialsSinceSeen * spacingCoeff, 3.0);
   }
@@ -483,7 +497,7 @@ function computePriority(pitchIdx) {
     if (neighborRatio > 0.3) priority += Math.min(neighborConf * 0.4, 2.0);
   }
   // Mastery dampening: requires consecutive correct AND fast responses (fluency)
-  const isFluent = stats.consecutiveCorrect >= 3 && medianRT > 0 && medianRT < motorFloor + 2000;
+  const isFluent = stats.consecutiveCorrect >= 3 && medianRT > 0 && medianRT < fluencyThreshold;
   if (isFluent) priority *= 0.5;
   if (adaptive.uncoveredPitches.has(pitchIdx)) priority += 5.0;
   return Math.max(priority, 0.2);
@@ -631,6 +645,25 @@ function updateAdaptiveStats() {
     adaptive.intervalStats[i].presentations *= 0.95;
     adaptive.intervalStats[i].bothCorrect *= 0.95;
     adaptive.intervalStats[i].preserved *= 0.95;
+  }
+
+  // RT history: store correct-trial RTs per polyphony for self-calibrating thresholds
+  const allCorrect = mysteryPitches.every(p => guessedPitches.includes(p))
+    && guessedPitches.every(g => mysteryPitches.includes(g));
+  if (allCorrect && rt > 0) {
+    const polyKey = state.polyphony;
+    if (!adaptive.rtHistory[polyKey]) adaptive.rtHistory[polyKey] = [];
+    const hist = adaptive.rtHistory[polyKey];
+    // Outlier gate: reject RTs > 60s during cold start, or > 2x current P90 once calibrated
+    let cap = 60000;
+    if (hist.length >= 15) {
+      const sorted = hist.slice().sort((a, b) => a - b);
+      cap = sorted[Math.floor(sorted.length * 0.9)] * 2;
+    }
+    if (rt <= cap) {
+      hist.push(rt);
+      if (hist.length > 50) hist.shift();
+    }
   }
 
   // Trial log: record minimum data for offline analysis
@@ -983,6 +1016,7 @@ function saveProgress() {
         uncoveredPitches: [...adaptive.uncoveredPitches],
         intervalStats: adaptive.intervalStats,
         trialLog: adaptive.trialLog,
+        rtHistory: adaptive.rtHistory,
       },
     };
     localStorage.setItem("ear-training-progress", JSON.stringify(data));
@@ -1043,6 +1077,14 @@ function loadProgress() {
         });
       }
       if (Array.isArray(a.trialLog)) adaptive.trialLog = a.trialLog.slice(-500);
+      if (a.rtHistory && typeof a.rtHistory === 'object') {
+        adaptive.rtHistory = {};
+        for (const [key, val] of Object.entries(a.rtHistory)) {
+          if (Array.isArray(val)) {
+            adaptive.rtHistory[parseInt(key)] = val.slice(-50);
+          }
+        }
+      }
     }
   } catch (e) { /* corrupt data — silently use defaults */ }
 }
@@ -1070,6 +1112,7 @@ function resetProgress() {
     presentations: 0, bothCorrect: 0, preserved: 0,
   }));
   adaptive.trialLog = [];
+  adaptive.rtHistory = {};
   render();
 }
 
@@ -1081,6 +1124,7 @@ function exportTrialLog() {
     log: adaptive.trialLog,
     intervalStats: adaptive.intervalStats,
     confusionMatrix: adaptive.confusionMatrix,
+    rtHistory: adaptive.rtHistory,
   };
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
