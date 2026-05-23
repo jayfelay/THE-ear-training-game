@@ -715,6 +715,13 @@ function previewNote(idx) {
 
 function startRound() {
   adaptive.roundStartTime = 0;
+  // On polyphony change: reset coverage tracking (uncoveredPitches,
+  // combinationDeck) but persist confusionMatrix, intervalStats, and pitchStats.
+  // Rationale: note-level confusion patterns transfer across polyphony levels
+  // (a player who confuses ♭2 with 1 at poly 1 still struggles with that pair
+  // at poly 2). The 0.95/trial decay handles staleness automatically. Pending
+  // empirical validation post-launch — revisit if cross-polyphony persistence
+  // is shown to muddy signal rather than aid transfer.
   if (state.polyphony !== adaptive.currentPolyphony) {
     adaptive.currentPolyphony = state.polyphony;
     adaptive.combinationDeck = state.polyphony <= 2 ? buildCombinationDeck(state.polyphony) : [];
