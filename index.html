@@ -905,23 +905,22 @@ function setDroneOctave(oct) {
   if (droneOsc) {
     const ctx = audioCtx;
     const now = ctx ? ctx.currentTime : 0;
-    if (droneGain) {
-      droneGain.gain.setValueAtTime(droneGain.gain.value, now);
-      droneGain.gain.linearRampToValueAtTime(0, now + 0.08);
+    const oldOsc = droneOsc;
+    const oldGain = droneGain;
+    droneOsc = null;
+    droneGain = null;
+    if (oldGain) {
+      oldGain.gain.setValueAtTime(oldGain.gain.value, now);
+      oldGain.gain.linearRampToValueAtTime(0, now + 0.08);
     }
     setTimeout(() => {
-      if (droneOsc) droneOsc.forEach(o => { try { o.stop(); } catch(e) {} });
-      droneOsc = null;
-      if (droneGain) { droneGain.disconnect(); droneGain = null; }
-      state.droneOctave = oct;
-      startDrone();
-      render();
+      oldOsc.forEach(o => { try { o.stop(); } catch(e) {} });
+      if (oldGain) oldGain.disconnect();
     }, 100);
-  } else {
-    state.droneOctave = oct;
-    startDrone();
-    render();
   }
+  state.droneOctave = oct;
+  startDrone();
+  render();
 }
 
 function toggleDroneOnOff() {
