@@ -219,6 +219,7 @@
 <body>
 <div class="bg-grain"></div>
 <div class="inner has-notch" id="app"></div>
+<audio id="silent-audio" playsinline src="data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIIEVCSiJrDCQBTcu3UrAIwUdkRgQbFAZC1CQEwTJ9mjRvBA4UOLD8nKVOWfh+UlK3z/177OXrfOdKl7pyn3Xf//FJAhBHvelTzu/A//9p///4MPVTL6+R+Lr/v/9hgqKB75rwzn1eF0Yk/+0DEFwoAAA9hzS/v0AAAA0gAAAAEpA=="></audio>
 
 <script>
 // ─── Audio Engine ───
@@ -253,9 +254,15 @@ function noteToFreq(note, octave) {
 let audioCtx = null;
 let playbackBus = null;
 let playbackOscillators = [];
+let silentAudioUnlocked = false;
 function ensureCtx() {
   if (!audioCtx || audioCtx.state === "closed") audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === "suspended") audioCtx.resume();
+  if (!silentAudioUnlocked) {
+    silentAudioUnlocked = true;
+    const el = document.getElementById("silent-audio");
+    if (el) { const p = el.play(); if (p && p.catch) p.catch(() => {}); }
+  }
   return audioCtx;
 }
 
