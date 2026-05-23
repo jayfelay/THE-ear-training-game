@@ -462,7 +462,7 @@ function computePriority(pitchIdx) {
     : 0;
   // Self-calibrating RT thresholds: derived from player's own correct RT history
   // Falls back to hardcoded motor floor formula for first 15 correct trials (cold start)
-  const rtHist = adaptive.rtHistory[state.polyphony];
+  const rtHist = adaptive.rtHistory[adaptive.currentPolyphony];
   let fastThreshold, slowThreshold, fluencyThreshold;
   if (rtHist && rtHist.length >= 15) {
     const sorted = rtHist.slice().sort((a, b) => a - b);
@@ -470,7 +470,7 @@ function computePriority(pitchIdx) {
     slowThreshold = sorted[Math.floor(sorted.length * 0.75)];
     fluencyThreshold = sorted[Math.floor(sorted.length * 0.35)];
   } else {
-    const motorFloor = 1400 + (state.polyphony - 1) * 1300;
+    const motorFloor = 1400 + (adaptive.currentPolyphony - 1) * 1300;
     fastThreshold = motorFloor + 1000;
     slowThreshold = motorFloor + 4000;
     fluencyThreshold = motorFloor + 2000;
@@ -657,7 +657,7 @@ function updateAdaptiveStats() {
   const allCorrect = mysteryPitches.every(p => guessedPitches.includes(p))
     && guessedPitches.every(g => mysteryPitches.includes(g));
   if (allCorrect && rt > 0) {
-    const polyKey = state.polyphony;
+    const polyKey = adaptive.currentPolyphony;
     if (!adaptive.rtHistory[polyKey]) adaptive.rtHistory[polyKey] = [];
     const hist = adaptive.rtHistory[polyKey];
     // Outlier gate: reject RTs > 60s during cold start, or > 2x current P90 once calibrated
