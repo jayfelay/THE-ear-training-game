@@ -571,7 +571,7 @@ function selectPitch(excludePitches) {
   for (let i = 0; i < 12; i++) {
     if (priorities[i] > 0) lastNonZero = i;
     r -= priorities[i];
-    if (r <= 0) return i;
+    if (r < 0) return i;
   }
   return lastNonZero;
 }
