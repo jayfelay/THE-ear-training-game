@@ -44,7 +44,7 @@
   }
   .logo-icon img { width: 100%; height: 100%; object-fit: cover; }
   .title { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; color: #f0f0f0; }
-  .subtitle { font-size: 11px; color: #8888aa; letter-spacing: 2px; text-transform: uppercase; }
+  .subtitle { font-size: 12px; color: #8888aa; letter-spacing: 0.3px; font-style: italic; }
   .settings-btn {
     background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
     color: #aaa; min-width: 40px; height: 40px; padding: 0 12px; border-radius: 10px; font-size: 18px; cursor: pointer;
@@ -89,6 +89,12 @@
   .main-area { margin-bottom: 24px; }
   .start-area { text-align: center; padding: 40px 20px; }
   .instructions { font-size: 14px; color: #8888aa; line-height: 1.6; margin-bottom: 28px; }
+  .onboard-pitch { text-align: left; margin-bottom: 32px; }
+  .onboard-pitch p { font-size: 14px; color: #8888aa; line-height: 1.6; margin: 0 0 16px 0; }
+  .onboard-howto { text-align: left; margin-bottom: 28px; }
+  .onboard-howto h3 { font-size: 13px; color: #aaa; margin: 0 0 12px 0; font-weight: 600; letter-spacing: 0.5px; }
+  .onboard-howto ol { font-size: 14px; color: #8888aa; line-height: 1.6; padding-left: 20px; margin: 0; }
+  .onboard-howto li { margin-bottom: 6px; }
 
   .big-btn {
     padding: 14px 36px; border-radius: 12px; border: none;
@@ -140,7 +146,8 @@
     border: 1px solid rgba(248,113,113,0.4); color: #f87171;
   }
   .note-name { font-weight: 600; font-size: 14px; }
-  .note-degree { font-size: 10px; opacity: 0.5; }
+  .note-degree { font-size: 11px; opacity: 0.6; }
+  .note-solfege { font-size: 10px; opacity: 0.4; }
 
   /* Actions */
   .action-row { display: flex; justify-content: center; margin-top: 20px; }
@@ -225,8 +232,8 @@
 // ─── Audio Engine ───
 const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 const ENHARMONIC = {"C#":"Db","D#":"Eb","F#":"Gb","G#":"Ab","A#":"Bb"};
-const DEGREE_LABELS = ["1","♭2","2","♭3","3","4","♯4/♭5","5","♭6","6","♭7","7"];
-const SOLFEGE = ["Do","Ra","Re","Me","Mi","Fa","Fi/Se","Sol","Le","La","Te","Ti"];
+const DEGREE_LABELS = ["1","♯1/♭2","2","♯2/♭3","3","4","♯4/♭5","5","♯5/♭6","6","♯6/♭7","7"];
+const SOLFEGE = ["Do","Di/Ra","Re","Ri/Me","Mi","Fa","Fi/Se","Sol","Si/Le","La","Li/Te","Ti"];
 
 const CADENCE_PATTERNS = {
   "I-IV-V-I": [[0],[5],[7],[0]],
@@ -257,7 +264,7 @@ let playbackOscillators = [];
 let silentAudioUnlocked = false;
 function ensureCtx() {
   if (!audioCtx || audioCtx.state === "closed") audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === "suspended") audioCtx.resume();
+  if (audioCtx.state === "suspended" || audioCtx.state === "interrupted") audioCtx.resume();
   if (!silentAudioUnlocked) {
     silentAudioUnlocked = true;
     const el = document.getElementById("silent-audio");
@@ -356,7 +363,7 @@ const state = {
   totalCorrect: 0,
   totalAttempts: 0,
   showSettings: false,
-  showStats: true,
+  showStats: false,
   lastRT: 0,
   history: [],
   mode: "game",
@@ -463,7 +470,7 @@ function computePriority(pitchIdx) {
     : 0;
   // Self-calibrating RT thresholds: derived from player's own correct RT history
   // Falls back to hardcoded motor floor formula for first 15 correct trials (cold start)
-  const rtHist = adaptive.rtHistory[state.polyphony];
+  const rtHist = adaptive.rtHistory[adaptive.currentPolyphony];
   let fastThreshold, slowThreshold, fluencyThreshold;
   if (rtHist && rtHist.length >= 15) {
     const sorted = rtHist.slice().sort((a, b) => a - b);
@@ -471,7 +478,7 @@ function computePriority(pitchIdx) {
     slowThreshold = sorted[Math.floor(sorted.length * 0.75)];
     fluencyThreshold = sorted[Math.floor(sorted.length * 0.35)];
   } else {
-    const motorFloor = 1400 + (state.polyphony - 1) * 1300;
+    const motorFloor = 1400 + (adaptive.currentPolyphony - 1) * 1300;
     fastThreshold = motorFloor + 1000;
     slowThreshold = motorFloor + 4000;
     fluencyThreshold = motorFloor + 2000;
@@ -572,7 +579,7 @@ function selectPitch(excludePitches) {
   for (let i = 0; i < 12; i++) {
     if (priorities[i] > 0) lastNonZero = i;
     r -= priorities[i];
-    if (r <= 0) return i;
+    if (r < 0) return i;
   }
   return lastNonZero;
 }
@@ -658,7 +665,7 @@ function updateAdaptiveStats() {
   const allCorrect = mysteryPitches.every(p => guessedPitches.includes(p))
     && guessedPitches.every(g => mysteryPitches.includes(g));
   if (allCorrect && rt > 0) {
-    const polyKey = state.polyphony;
+    const polyKey = adaptive.currentPolyphony;
     if (!adaptive.rtHistory[polyKey]) adaptive.rtHistory[polyKey] = [];
     const hist = adaptive.rtHistory[polyKey];
     // Outlier gate: reject RTs > 60s during cold start, or > 2x current P90 once calibrated
@@ -715,6 +722,14 @@ function previewNote(idx) {
 }
 
 function startRound() {
+  adaptive.roundStartTime = 0;
+  // On polyphony change: reset coverage tracking (uncoveredPitches,
+  // combinationDeck) but persist confusionMatrix, intervalStats, and pitchStats.
+  // Rationale: note-level confusion patterns transfer across polyphony levels
+  // (a player who confuses ♭2 with 1 at poly 1 still struggles with that pair
+  // at poly 2). The 0.95/trial decay handles staleness automatically. Pending
+  // empirical validation post-launch — revisit if cross-polyphony persistence
+  // is shown to muddy signal rather than aid transfer.
   if (state.polyphony !== adaptive.currentPolyphony) {
     adaptive.currentPolyphony = state.polyphony;
     adaptive.combinationDeck = state.polyphony <= 2 ? buildCombinationDeck(state.polyphony) : [];
@@ -898,23 +913,22 @@ function setDroneOctave(oct) {
   if (droneOsc) {
     const ctx = audioCtx;
     const now = ctx ? ctx.currentTime : 0;
-    if (droneGain) {
-      droneGain.gain.setValueAtTime(droneGain.gain.value, now);
-      droneGain.gain.linearRampToValueAtTime(0, now + 0.08);
+    const oldOsc = droneOsc;
+    const oldGain = droneGain;
+    droneOsc = null;
+    droneGain = null;
+    if (oldGain) {
+      oldGain.gain.setValueAtTime(oldGain.gain.value, now);
+      oldGain.gain.linearRampToValueAtTime(0, now + 0.08);
     }
     setTimeout(() => {
-      if (droneOsc) droneOsc.forEach(o => { try { o.stop(); } catch(e) {} });
-      droneOsc = null;
-      if (droneGain) { droneGain.disconnect(); droneGain = null; }
-      state.droneOctave = oct;
-      startDrone();
-      render();
+      oldOsc.forEach(o => { try { o.stop(); } catch(e) {} });
+      if (oldGain) oldGain.disconnect();
     }, 100);
-  } else {
-    state.droneOctave = oct;
-    startDrone();
-    render();
   }
+  state.droneOctave = oct;
+  startDrone();
+  render();
 }
 
 function toggleDroneOnOff() {
@@ -951,6 +965,7 @@ function exitDroneMode() {
 }
 
 function toggleGuess(idx) {
+  if (adaptive.roundStartTime === 0) return;
   if (state.revealed) return;
   const i = state.guesses.indexOf(idx);
   if (i >= 0) state.guesses.splice(i, 1);
@@ -1041,7 +1056,7 @@ function loadProgress() {
     if (s) {
       if (s.instrument && INSTRUMENTS[s.instrument]) state.instrument = s.instrument;
       if (s.cadenceType && CADENCE_PATTERNS[s.cadenceType]) state.cadenceType = s.cadenceType;
-      if (typeof s.polyphony === "number" && s.polyphony >= 1 && s.polyphony <= 8) state.polyphony = s.polyphony;
+      if (typeof s.polyphony === "number" && s.polyphony >= 1 && s.polyphony <= 8) state.polyphony = Math.min(s.polyphony, 3);
       if (s.octaveMode === "single" || s.octaveMode === "multiple") state.octaveMode = s.octaveMode;
       if (s.tempo && TEMPO_SETTINGS[s.tempo]) state.tempo = s.tempo;
       if (s.droneOctave === "low" || s.droneOctave === "high") state.droneOctave = s.droneOctave;
@@ -1099,6 +1114,7 @@ function loadProgress() {
 function resetProgress() {
   if (!confirm("Reset all progress? This cannot be undone.")) return;
   localStorage.removeItem("ear-training-progress");
+  stopPlayback();
   state.instrument = "synth"; state.cadenceType = "I-IV-V-I"; state.polyphony = 1;
   state.octaveMode = "single"; state.tempo = "medium"; state.streak = 0;
   state.bestStreak = 0; state.totalCorrect = 0; state.totalAttempts = 0;
@@ -1178,7 +1194,7 @@ function render() {
       <div class="setting-group">
         <label class="setting-label">Notes to guess: ${state.polyphony}</label>
         <div class="toggle-row">
-          ${[1,2,3,4,5,6,7,8].map(n =>
+          ${[1,2,3].map(n =>
             `<button class="toggle-btn ${state.polyphony===n?'active':''}" onclick="setSetting('polyphony',${n})">${n}</button>`
           ).join("")}
         </div>
@@ -1241,7 +1257,8 @@ function render() {
       const cls = active ? "sustained" : "";
       return `<button class="note-btn ${cls}" onclick="toggleDroneNote(${idx})">
         <span class="note-name">${getNoteDisplay(idx)}</span>
-        <span class="note-degree">${DEGREE_LABELS[idx]} ${SOLFEGE[idx]}</span>
+        <span class="note-degree">${DEGREE_LABELS[idx]}</span>
+        <span class="note-solfege">${SOLFEGE[idx]}</span>
       </button>`;
     }).join("");
     mainHTML = `
@@ -1256,10 +1273,34 @@ function render() {
       </div>
       <div class="note-grid">${droneButtons}</div>`;
   } else if (!state.gameActive) {
-    mainHTML = `<div class="start-area">
-      <p class="instructions">Listen to the cadence to establish the key, then identify the mystery ${state.polyphony > 1 ? "notes" : "note"}.</p>
-      <button class="big-btn" onclick="startRound()">Start Round</button>
-    </div>`;
+    if (adaptive.trialNumber === 0) {
+      mainHTML = `<div class="start-area">
+         <div class="onboard-pitch">
+           <p>Honestly... most ear training apps suck. They make you guess what to practice. They feel like homework. Confusing. Slow. Not fun. You can't tell if you're getting better.</p>
+           <p>I made this because it's what I wish I had when I was training my own ears. It's simple.</p>
+           <p>Think of it less as an app and more as a built-in teacher. Not just any teacher. One that knows your specific weak spots and serves exactly the notes your ear needs. It watches what you miss, what you confuse, and how fast you respond. It knows exactly what to throw at you next to help you learn.</p>
+           <p>Berklee training, years of doing this the hard way, and learning science from the last twenty years... all built into the algorithm.</p>
+           <p>It does the learning for you.</p>
+           <p>It's hard. It's fun. It works.</p>
+           <p>Just play.</p>
+           <p>—Jayfelay</p>
+        </div>
+        <div class="onboard-howto">
+          <h3>How a round works:</h3>
+          <ol>
+            <li>A short cadence plays — that's your "home base" (reference key)</li>
+            <li>Mystery note(s) play</li>
+            <li>Tap the note(s) you heard</li>
+          </ol>
+        </div>
+        <button class="big-btn" onclick="startRound()">Start training</button>
+      </div>`;
+    } else {
+      mainHTML = `<div class="start-area">
+        <p class="instructions">Listen to the cadence to establish the key, then identify the mystery ${state.polyphony > 1 ? "notes" : "note"}.</p>
+        <button class="big-btn" onclick="startRound()">Start Round</button>
+      </div>`;
+    }
   } else {
     const revealedResult = state.revealed ? isCorrect() : null;
     const promptClass = revealedResult === true ? "correct" : revealedResult === false ? "wrong" : "";
@@ -1271,7 +1312,8 @@ function render() {
       const cls = guessButtonClass(idx);
       return `<button class="note-btn ${cls}" onclick="previewNote(${idx});toggleGuess(${idx})">
         <span class="note-name">${getNoteDisplay(idx)}</span>
-        <span class="note-degree">${DEGREE_LABELS[idx]} ${SOLFEGE[idx]}</span>
+        <span class="note-degree">${DEGREE_LABELS[idx]}</span>
+        <span class="note-solfege">${SOLFEGE[idx]}</span>
       </button>`;
     }).join("");
 
@@ -1325,7 +1367,7 @@ function render() {
     <header class="header">
       <div class="logo-area">
         <div class="logo-icon"><img src="EarTrainingGameThumbnail.png" alt="THE Ear Training Game"></div>
-        <div><div class="title">THE Ear Training Game</div><div class="subtitle">chromatic pitch recognition</div></div>
+        <div><div class="title">THE Ear Training Game</div><div class="subtitle">Your Personalized Path to Relative Pitch</div></div>
       </div>
       <div class="header-controls">
         <div class="mode-tabs">
