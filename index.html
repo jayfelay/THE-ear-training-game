@@ -255,7 +255,7 @@ let playbackBus = null;
 let playbackOscillators = [];
 function ensureCtx() {
   if (!audioCtx || audioCtx.state === "closed") audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === "suspended") audioCtx.resume();
+  if (audioCtx.state === "suspended" || audioCtx.state === "interrupted") audioCtx.resume();
   return audioCtx;
 }
 
