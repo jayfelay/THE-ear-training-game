@@ -1,0 +1,15 @@
+Copyright (c) 2026 John Felice / Jayfelay. All rights reserved.
+
+THE Ear Training Game and its source code, algorithm, design, and associated materials are the proprietary work of John Felice ("Jayfelay"). Source is publicly visible for transparency and educational viewing, but the following are NOT permitted without explicit written permission from the copyright holder:
+
+- Use of the source code, in whole or in part, in any other project
+- Modification, adaptation, or creation of derivative works
+- Redistribution, republishing, or rehosting of the code or compiled application
+- Commercial use of any kind, including but not limited to: paid or free competing products, training data for machine learning models, or inclusion in any commercial offering
+- Use of the adaptive learning algorithm, anchor-slip detection method, or scoring mechanisms in other software
+
+The live application at https://jayfelay.github.io/THE-ear-training-game/ is provided as-is for end-user personal use only. End-user data (localStorage progress, trial logs) is private to the user's browser and never transmitted.
+
+For licensing inquiries, partnerships, or permission requests:
+john@johnfelicemusic.com
+Socials: @jayfelay
