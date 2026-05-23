@@ -1107,6 +1107,7 @@ function loadProgress() {
 function resetProgress() {
   if (!confirm("Reset all progress? This cannot be undone.")) return;
   localStorage.removeItem("ear-training-progress");
+  stopPlayback();
   state.instrument = "synth"; state.cadenceType = "I-IV-V-I"; state.polyphony = 1;
   state.octaveMode = "single"; state.tempo = "medium"; state.streak = 0;
   state.bestStreak = 0; state.totalCorrect = 0; state.totalAttempts = 0;
