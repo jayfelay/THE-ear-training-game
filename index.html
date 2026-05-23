@@ -714,6 +714,7 @@ function previewNote(idx) {
 }
 
 function startRound() {
+  adaptive.roundStartTime = 0;
   if (state.polyphony !== adaptive.currentPolyphony) {
     adaptive.currentPolyphony = state.polyphony;
     adaptive.combinationDeck = state.polyphony <= 2 ? buildCombinationDeck(state.polyphony) : [];
@@ -950,6 +951,7 @@ function exitDroneMode() {
 }
 
 function toggleGuess(idx) {
+  if (adaptive.roundStartTime === 0) return;
   if (state.revealed) return;
   const i = state.guesses.indexOf(idx);
   if (i >= 0) state.guesses.splice(i, 1);
