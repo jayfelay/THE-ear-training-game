@@ -1034,7 +1034,7 @@ function loadProgress() {
     if (s) {
       if (s.instrument && INSTRUMENTS[s.instrument]) state.instrument = s.instrument;
       if (s.cadenceType && CADENCE_PATTERNS[s.cadenceType]) state.cadenceType = s.cadenceType;
-      if (typeof s.polyphony === "number" && s.polyphony >= 1 && s.polyphony <= 8) state.polyphony = s.polyphony;
+      if (typeof s.polyphony === "number" && s.polyphony >= 1 && s.polyphony <= 8) state.polyphony = Math.min(s.polyphony, 3);
       if (s.octaveMode === "single" || s.octaveMode === "multiple") state.octaveMode = s.octaveMode;
       if (s.tempo && TEMPO_SETTINGS[s.tempo]) state.tempo = s.tempo;
       if (s.droneOctave === "low" || s.droneOctave === "high") state.droneOctave = s.droneOctave;
@@ -1171,7 +1171,7 @@ function render() {
       <div class="setting-group">
         <label class="setting-label">Notes to guess: ${state.polyphony}</label>
         <div class="toggle-row">
-          ${[1,2,3,4,5,6,7,8].map(n =>
+          ${[1,2,3].map(n =>
             `<button class="toggle-btn ${state.polyphony===n?'active':''}" onclick="setSetting('polyphony',${n})">${n}</button>`
           ).join("")}
         </div>
