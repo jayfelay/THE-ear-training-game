@@ -21,7 +21,7 @@ That led to implementing ideas from perceptual learning research — specificall
 
 **The loop:** A cadence establishes a key. Mystery note(s) play. You identify them from a chromatic grid. The algorithm updates your profile and selects the next challenge accordingly.
 
-## The Research
+## The Research 
 
 The adaptive engine draws on several lines of research in perceptual and adaptive learning.
 
