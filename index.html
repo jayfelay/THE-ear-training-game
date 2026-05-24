@@ -221,6 +221,30 @@
     box-shadow: 0 0 16px rgba(99,102,241,0.25);
   }
 
+  /* Unlock gate */
+  .trial-counter {
+    text-align: center; font-size: 11px; color: #666680;
+    letter-spacing: 0.5px; margin: -16px 0 18px;
+  }
+  .unlock-panel {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px; padding: 28px 22px; text-align: center; max-width: 480px;
+    margin: 0 auto;
+  }
+  .unlock-title { font-size: 18px; font-weight: 700; color: #e0e0e0; margin: 0 0 14px; }
+  .unlock-msg { font-size: 14px; color: #8888aa; line-height: 1.55; margin: 0 0 16px; }
+  .unlock-link-line { margin: 0 0 18px; }
+  .unlock-link { color: #a5b4fc; text-decoration: underline; font-size: 13px; }
+  .unlock-input {
+    width: 100%; box-sizing: border-box; padding: 12px 14px; margin-bottom: 14px;
+    background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px; color: #e0e0e0; font-family: inherit; font-size: 14px;
+    letter-spacing: 1px; text-align: center; outline: none;
+  }
+  .unlock-input:focus { border-color: rgba(99,102,241,0.6); }
+  .unlock-error { color: #f87171; font-size: 12px; margin: 12px 0 0; line-height: 1.5; }
+  .unlock-note { font-size: 11px; color: #666680; margin: 16px 0 0; }
+
 </style>
 </head>
 <body>
@@ -369,6 +393,9 @@ const state = {
   mode: "game",
   droneOctave: "low",
   droneActiveNotes: [],
+  freeRoundsRemaining: 300,
+  unlocked: false,
+  unlockError: "",
 };
 
 // ─── Adaptive Learning (ARTS-inspired) ───
@@ -981,6 +1008,7 @@ function handleReveal() {
   const ug = [...new Set(state.guesses)].sort((a, b) => a - b);
   const correct = ug.length === mp.length && ug.every((g, i) => g === mp[i]);
   state.totalAttempts++;
+  if (!state.unlocked && state.freeRoundsRemaining > 0) state.freeRoundsRemaining--;
   if (correct) { state.streak++; state.bestStreak = Math.max(state.bestStreak, state.streak); state.totalCorrect++; }
   else state.streak = 0;
   state.lastRT = adaptive.roundStartTime > 0 ? performance.now() - adaptive.roundStartTime : 0;
@@ -1017,6 +1045,24 @@ function requiredGuesses() {
 // ─── Settings Helpers ───
 function setSetting(key, val) { state[key] = val; saveProgress(); render(); }
 
+// ─── Unlock Gate ───
+function normalizeUnlockCode(s) {
+  return (s || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+}
+function submitUnlock() {
+  const input = document.getElementById("unlock-code-input");
+  const entered = normalizeUnlockCode(input ? input.value : "");
+  if (entered === "ETG7K3F9M2PX8Q1") {
+    state.unlocked = true;
+    state.unlockError = "";
+    saveProgress();
+    render();
+  } else {
+    state.unlockError = `That code doesn't match. Check your email, or get one at <a class="unlock-link" href="https://jayfelay.gumroad.com/l/eartrainer" target="_blank" rel="noopener">jayfelay.gumroad.com/l/eartrainer</a>`;
+    render();
+  }
+}
+
 // ─── Persistence ───
 function saveProgress() {
   try {
@@ -1030,6 +1076,8 @@ function saveProgress() {
         streak: state.streak, bestStreak: state.bestStreak,
         totalCorrect: state.totalCorrect, totalAttempts: state.totalAttempts,
         history: state.history,
+        freeRoundsRemaining: state.freeRoundsRemaining,
+        unlocked: state.unlocked,
       },
       adaptive: {
         trialNumber: adaptive.trialNumber,
@@ -1065,6 +1113,8 @@ function loadProgress() {
       if (typeof s.totalCorrect === "number") state.totalCorrect = s.totalCorrect;
       if (typeof s.totalAttempts === "number") state.totalAttempts = s.totalAttempts;
       if (Array.isArray(s.history)) state.history = s.history.slice(0, 20);
+      if (typeof s.freeRoundsRemaining === "number") state.freeRoundsRemaining = Math.max(0, Math.min(300, s.freeRoundsRemaining));
+      if (typeof s.unlocked === "boolean") state.unlocked = s.unlocked;
     }
     // Restore adaptive
     const a = data.adaptive;
@@ -1113,7 +1163,6 @@ function loadProgress() {
 
 function resetProgress() {
   if (!confirm("Reset all progress? This cannot be undone.")) return;
-  localStorage.removeItem("ear-training-progress");
   stopPlayback();
   state.instrument = "synth"; state.cadenceType = "I-IV-V-I"; state.polyphony = 1;
   state.octaveMode = "single"; state.tempo = "medium"; state.streak = 0;
@@ -1136,6 +1185,7 @@ function resetProgress() {
   }));
   adaptive.trialLog = [];
   adaptive.rtHistory = {};
+  saveProgress();
   render();
 }
 
@@ -1273,7 +1323,17 @@ function render() {
       </div>
       <div class="note-grid">${droneButtons}</div>`;
   } else if (!state.gameActive) {
-    if (adaptive.trialNumber === 0) {
+    if (!state.unlocked && state.freeRoundsRemaining === 0) {
+      mainHTML = `<div class="unlock-panel">
+        <h2 class="unlock-title">Unlock THE Ear Training Game</h2>
+        <p class="unlock-msg">You've completed your 300 free rounds. Unlock lifetime access to continue training with the personalized algorithm.</p>
+        <p class="unlock-link-line"><a class="unlock-link" href="https://jayfelay.gumroad.com/l/eartrainer" target="_blank" rel="noopener">Get a code →</a></p>
+        <input id="unlock-code-input" class="unlock-input" type="text" placeholder="Enter your unlock code" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button class="big-btn" onclick="submitUnlock()">Unlock</button>
+        ${state.unlockError ? `<p class="unlock-error">${state.unlockError}</p>` : ""}
+        <p class="unlock-note">Already have a code? Enter it above.</p>
+      </div>`;
+    } else if (adaptive.trialNumber === 0) {
       mainHTML = `<div class="start-area">
          <div class="onboard-pitch">
            <p>Honestly... most ear training apps suck. They make you guess what to practice. They feel like homework. Confusing. Slow. Not fun. You can't tell if you're getting better.</p>
@@ -1388,6 +1448,9 @@ function render() {
       <div class="stat"><span class="stat-num">${acc}%</span><span class="stat-label">accuracy</span></div>
       <div class="stat"><span class="stat-num">${adaptive.trialNumber}</span><span class="stat-label">rounds</span></div>
     </div>` : ""}
+    ${state.mode === "game" && !state.unlocked && state.freeRoundsRemaining > 0
+      ? `<div class="trial-counter">${state.freeRoundsRemaining} free rounds remaining</div>`
+      : ""}
     <div class="main-area">${mainHTML}</div>
     ${state.mode === "game" ? historyHTML : ""}`;
 }
