@@ -244,6 +244,8 @@
   .unlock-input:focus { border-color: rgba(99,102,241,0.6); }
   .unlock-error { color: #f87171; font-size: 12px; margin: 12px 0 0; line-height: 1.5; }
   .unlock-note { font-size: 11px; color: #666680; margin: 16px 0 0; }
+  .unlock-settings-msg { font-size: 12px; color: #8888aa; margin: 0; line-height: 1.45; }
+  .unlock-settings-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 
 </style>
 </head>
@@ -1049,8 +1051,8 @@ function setSetting(key, val) { state[key] = val; saveProgress(); render(); }
 function normalizeUnlockCode(s) {
   return (s || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 }
-function submitUnlock() {
-  const input = document.getElementById("unlock-code-input");
+function submitUnlock(inputId) {
+  const input = document.getElementById(inputId || "unlock-code-input");
   const entered = normalizeUnlockCode(input ? input.value : "");
   if (entered === "ETG7K3F9M2PX8Q1") {
     state.unlocked = true;
@@ -1217,6 +1219,16 @@ function render() {
   let settingsHTML = "";
   if (state.showSettings) {
     settingsHTML = `<div class="settings-panel">
+      ${!state.unlocked ? `<div class="setting-group unlock-settings-group">
+        <label class="setting-label">Unlock</label>
+        <p class="unlock-settings-msg">Already purchased? Enter your unlock code here.</p>
+        <input id="unlock-code-input-settings" class="unlock-input" type="text" placeholder="Enter your unlock code" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <div class="unlock-settings-actions">
+          <button class="toggle-btn active" onclick="submitUnlock('unlock-code-input-settings')">Unlock</button>
+          <a class="unlock-link" href="https://jayfelay.gumroad.com/l/eartrainer" target="_blank" rel="noopener">Get a code →</a>
+        </div>
+        ${state.unlockError ? `<p class="unlock-error">${state.unlockError}</p>` : ""}
+      </div>` : ""}
       <div class="setting-group">
         <label class="setting-label">Instrument</label>
         <div class="toggle-row">
